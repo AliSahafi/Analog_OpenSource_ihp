@@ -40,10 +40,10 @@ docker run -d -p 8081:80 --name opensource_8081 opensource_setupem --wait
 Navigate to `localhost:8081` in your browser. From the XFCE Desktop Terminal run:
 ```bash
 setupEM
-# -> Start your model generations!
+# -> GUI and setup tool for the gds2palace RFIC FEM simulation workflow.
 
 EMStudio
-# -> Analyze 3D models via the IHP UI!
+# -> Open-source electromagnetic field simulation software using the FDTD method.
 ```
 
 ---
