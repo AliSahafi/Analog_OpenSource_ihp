@@ -24,7 +24,7 @@ This repository automatically applies these patches to your local container.
 Clone this repository and build the container locally. You only need to do this once.
 
 ```bash
-git clone git@github.com:AliSahafi/Analog_OpenSource_ihp.git
+git clone https://github.com/AliSahafi/Analog_OpenSource_ihp.git
 cd Analog_OpenSource_ihp
 docker build -t opensource_setupem .
 ```
