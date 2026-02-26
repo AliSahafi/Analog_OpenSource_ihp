@@ -56,10 +56,15 @@ You can extract that folder and run this script locally using `scikit-rf` to plo
 
 ```bash
 pip install scikit-rf matplotlib
+
+# Generic usage:
+python3 plot_inductor.py <path_to_s2p_file> <path_to_deembedded_s2p_file>
+
+# Example for the 500pH Inductor:
 python3 plot_inductor.py ./inductor_500pH_with_ports.s2p ./inductor_500pH_with_ports_deembedded.s2p
 ```
 
-This will output two graphical figures:
+This will output two graphical figures (defaulting to inductor naming):
 -   `inductor_plot_diff.png` (Differential Inductor Parameters - L, Q, R)
 -   `inductor_plot_pi.png` (Pi Model Parameters)
 
