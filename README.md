@@ -62,3 +62,11 @@ python3 plot_inductor.py ./inductor_500pH_with_ports.s2p ./inductor_500pH_with_p
 This will output two graphical figures:
 -   `inductor_plot_diff.png` (Differential Inductor Parameters - L, Q, R)
 -   `inductor_plot_pi.png` (Pi Model Parameters)
+
+---
+
+## 🙌 Acknowledgments
+
+*   **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus**. ([GitHub](https://github.com/muehlhaus/setupEM))
+*   **plot_inductor.py**: The plotting script provided in this repository was originally authored by **Volker Muehlhaus**.
+*   **Base Docker Image**: The underlying IC design environment is provided by the excellent **IIC-OSIC-TOOLS** project. ([GitHub](https://github.com/iic-jku/iic-osic-tools) | [Docker Hub](https://hub.docker.com/r/hpretl/iic-osic-tools))
