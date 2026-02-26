@@ -1,0 +1,62 @@
+# Analog OpenSource IHP Complementary Setup
+
+This complementary repository provides an enhanced Dockerfile alongside post-processing scripts specifically designed for working with the IHP SG13G2 open-source PDK inside the `iic-osic-tools` environment.
+
+## Overview
+
+The primary base image (`hpretl/iic-osic-tools`) provides a vast collection of analog and digital EDA tools. However, for fully simulating and meshing RF structures using Volker Muehlhaus's `setupEM` tool and the `AWS Palace` 3D EM simulator within this environment, several additional steps are required.
+
+This repository automatically applies these patches to your local container.
+
+### Included Patches & Additions:
+1.  **Gmsh with OpenCASCADE Support**: Compiles `gmsh` 4.15.0 from source natively with `-DENABLE_OCC=1`, enabling 3D boolean operations and geometry processing required by `gds2palace`.
+2.  **Volker's setupEM Tool**: Pip installs `setupEM` alongside precisely pinned dependencies (`gds2palace==0.1.19`, `gdspy==1.6.13`).
+3.  **IHP EMStudio GUI**: Clones, compiles, and installs the official `IHP-GmbH/EMStudio` repository from source.
+4.  **Global Script Execution Fixes**: Exposes `setupEM`, `EMStudio`, and essential post-processing commands right into your system PATH. It additionally patches the `combine_snp` executable from the localized PDK folder to globally run using your active python interpreter.
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Download & Build Container
+Clone this repository and build the container locally. You only need to do this once.
+
+```bash
+git clone git@github.com:AliSahafi/Analog_OpenSource_ihp.git
+cd Analog_OpenSource_ihp
+docker build -t opensource_setupem .
+```
+
+### 2. Run Container
+Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax! We launch the GUI into a headless VNC session over port `:80`.
+
+```bash
+docker run -d -p 8081:80 --name opensource_8081 opensource_setupem --wait
+```
+
+### 3. Start Simulations!
+Navigate to `localhost:8081` in your browser. From the XFCE Desktop Terminal run:
+```bash
+setupEM
+# -> Start your model generations!
+
+EMStudio
+# -> Analyze 3D models via the IHP UI!
+```
+
+---
+
+## 📈 Post-Processing S-Parameters
+
+Included in this repository is `plot_inductor.py`. When your RF simulation in `palace` finishes, it will generate an output directory (e.g. `palace_model/inductor_output`). 
+
+You can extract that folder and run this script locally using `scikit-rf` to plot your parameters smoothly!
+
+```bash
+pip install scikit-rf matplotlib
+python3 plot_inductor.py ./inductor_500pH_with_ports.s2p ./inductor_500pH_with_ports_deembedded.s2p
+```
+
+This will output two graphical figures:
+-   `inductor_plot_diff.png` (Differential Inductor Parameters - L, Q, R)
+-   `inductor_plot_pi.png` (Pi Model Parameters)
