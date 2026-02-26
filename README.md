@@ -4,7 +4,9 @@ This complementary repository provides an enhanced Dockerfile alongside post-pro
 
 ## Overview
 
-The primary base image (`hpretl/iic-osic-tools`) provides a vast collection of analog and digital EDA tools. However, for fully simulating and meshing RF structures using Volker Muehlhaus's `setupEM` tool and the `AWS Palace` 3D EM simulator within this environment, several additional steps are required.
+This setup is built on top of the excellent base image provided by the [IIC-OSIC-TOOLS project on GitHub](https://github.com/iic-jku/iic-osic-tools) (Docker: `hpretl/iic-osic-tools`), which provides a vast collection of analog and digital EDA tools.
+
+However, for fully simulating and meshing RF structures, this repository extends the environment with additional steps to support [Volker Muehlhaus's setupEM tool](https://github.com/muehlhaus/setupEM) and the `AWS Palace` 3D EM simulator. The included Python plotting script (`plot_inductor.py`) was also originally provided by Volker Muehlhaus.
 
 This repository automatically applies these patches to your local container.
 
