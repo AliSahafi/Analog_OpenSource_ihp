@@ -20,7 +20,11 @@ This repository automatically applies these patches to your local container.
 
 ## 🚀 Quick Start Guide
 
-### 1. Download & Build Container
+### 1. Requirements
+
+Before starting, ensure you have **Docker Desktop** (or a compatible Docker engine) installed and running on your system.
+
+### 2. Download & Build Container
 Clone this repository and build the container locally. You only need to do this once.
 
 ```bash
@@ -29,22 +33,35 @@ cd Analog_OpenSource_ihp
 docker build -t opensource_setupem .
 ```
 
-### 2. Run Container
+### 3. Run Container
 Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax! We launch the GUI into a headless VNC session over port `:80`.
 
 ```bash
-docker run -d -p 8081:80 --name opensource_8081 opensource_setupem --wait
+docker run -d -p 8081:80 -v $(pwd)/inductor_output:/workdir --name analog_sim opensource_setupem
 ```
 
-### 3. Start Simulations!
-Navigate to `localhost:8081` in your browser. From the XFCE Desktop Terminal run:
+For the full desktop experience, navigate to **`http://localhost:8081/vnc.html`** in your web browser.
+
+### 4. Start Simulations!
+From the XFCE Desktop Terminal within your browser, you can directly run:
+
 ```bash
 setupEM
 # -> GUI and setup tool for the gds2palace RFIC FEM simulation workflow.
 
 EMStudio
 # -> Open-source electromagnetic field simulation software using the FDTD method.
+
+KLayout.sh
+# -> Launches KLayout with the EMStudio driver fully integrated!
 ```
+
+**EMStudio Configuration Setup:**
+When launching EMStudio for the first time, open **Setup -> Preferences** and ensure the following paths are configured:
+
+*   **MODEL_TEMPLATES_DIR:** `/opt/emstudio/scripts`
+*   **PALACE_RUN_MODE:** `Script`
+*   **PALACE_RUN_SCRIPT:** `/opt/emstudio/scripts/run_palace`
 
 ---
 
