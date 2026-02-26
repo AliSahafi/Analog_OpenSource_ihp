@@ -59,9 +59,10 @@ KLayout.sh
 **EMStudio Configuration Setup:**
 When launching EMStudio for the first time, open **Setup -> Preferences** and ensure the following paths are configured:
 
-*   **MODEL_TEMPLATES_DIR:** `/opt/emstudio/scripts`
-*   **PALACE_RUN_MODE:** `Script`
-*   **PALACE_RUN_SCRIPT:** `/opt/emstudio/scripts/run_palace`
+*   **EMStudio -> MODEL_TEMPLATES_DIR:** `/opt/emstudio/scripts`
+*   **OpenEMS -> Python Path:** `/usr/bin/python3`
+*   **Palace -> PALACE_RUN_MODE:** `Script`
+*   **Palace -> PALACE_RUN_SCRIPT:** `/opt/emstudio/scripts/run_palace`
 
 ---
 
