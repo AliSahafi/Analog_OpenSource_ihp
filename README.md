@@ -93,6 +93,10 @@ This will output two graphical figures (defaulting to inductor naming):
 -   `inductor_plot_diff.png` (Differential Inductor Parameters - L, Q, R)
 -   `inductor_plot_pi.png` (Pi Model Parameters)
 
+<p align="center">
+  <img src="./Figure_1.png" alt="Plot Result" width="600"/>
+</p>
+
 ---
 
 ## 🙌 Acknowledgments
