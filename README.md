@@ -1,5 +1,9 @@
 # Analog OpenSource IHP Complementary Setup
 
+<p align="center">
+  <img src="./inductor_mesh.png" alt="Inductor Mesh Preview" width="600"/>
+</p>
+
 This complementary repository provides an enhanced Dockerfile alongside post-processing scripts specifically designed for working with the IHP SG13G2 open-source PDK inside the `iic-osic-tools` environment.
 
 ## Overview
