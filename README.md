@@ -40,7 +40,10 @@ Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax
 docker run -d -p 8081:80 -v $(pwd)/inductor_output:/workdir --name analog_sim opensource_setupem
 ```
 
+Navigate to **`http://localhost:8081/`** to access the container via the web GUI.
 For the full desktop experience, navigate to **`http://localhost:8081/vnc.html`** in your web browser.
+
+> **Note:** The default VNC password for the container is `abc123`
 
 ### 4. Start Simulations!
 From the XFCE Desktop Terminal within your browser, you can directly run:
