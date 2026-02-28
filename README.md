@@ -99,6 +99,92 @@ This will output two graphical figures (defaulting to inductor naming):
 
 ---
 
+---
+
+## 🔲 Digital Flow — Verilog to GDS (IHP SG13G2)
+
+The base `iic-osic-tools` image already includes **LibreLane 2.x, OpenROAD, Yosys, Magic, and Netgen** for digital design. However, the IHP SG13G2 PDK configuration had several incompatibilities with LibreLane 2.x that prevented a working Verilog-to-GDS flow. This repository adds the following fixes and tools:
+
+### What Was Added
+
+| Addition | Purpose |
+|----------|---------|
+| `verilog2gds` script | One-command Verilog → GDS automation |
+| `verilator` (apt) | Verilog linting and simulation |
+| IHP PDK corner name patches | Fixes `LIB`, `TECH_LEFS`, `RCX_RULESETS` wildcard keys incompatible with LibreLane 2.x |
+| `cut_rows.tcl` patch | Skips endcap insertion gracefully when IHP has no endcap cells |
+| `tapcell.tcl` patch | Skips tapcell insertion when `FP_TAPCELL_DIST=0` (IHP has no tapcells) |
+| `klayout` symlink | Makes KLayout accessible to LibreLane's XOR signoff step |
+
+### Using `verilog2gds`
+
+The `verilog2gds` command is available globally inside the container. It takes your Verilog source file and runs the complete RTL-to-GDS flow using LibreLane with the IHP SG13G2 PDK.
+
+**Basic usage:**
+```bash
+verilog2gds <your_design.v>
+```
+
+**Full argument reference:**
+
+```
+usage: verilog2gds [-h] [--module MODULE] [--clock-port CLOCK_PORT]
+                   [--clock-period CLOCK_PERIOD] [--utilization UTILIZATION]
+                   [--pdk PDK] [--full-timing]
+                   verilog_file
+
+positional arguments:
+  verilog_file                    Path to the Verilog source file
+
+optional arguments:
+  -h, --help                      Show this help message and exit
+  --module, -m MODULE             Top module name (default: filename stem)
+  --clock-port, -c CLOCK_PORT     Clock port name (default: clk)
+  --clock-period, -p CLOCK_PERIOD Clock period in ns (default: 10.0 ns = 100 MHz)
+  --utilization, -u UTILIZATION   Core utilization % (default: 10)
+  --pdk PDK                       PDK to use: ihp-sg13g2 or sky130A (default: ihp-sg13g2)
+  --full-timing                   Run all 3 timing corners instead of typical only (slower)
+```
+
+**Examples:**
+
+```bash
+# Simple run — defaults to 100 MHz clock, 10% utilization
+verilog2gds counter.v
+
+# Compact layout at 50% utilization, 200 MHz clock
+verilog2gds my_design.v --utilization 50 --clock-period 5
+
+# Specify a different top module name and clock port
+verilog2gds top.v --module my_top --clock-port sys_clk
+
+# Full 3-corner timing analysis for signoff
+verilog2gds my_design.v --utilization 40 --full-timing
+
+# Use sky130A PDK instead
+verilog2gds my_design.v --pdk sky130A
+```
+
+**Output:** GDS files are written to `./<module_name>_run/runs/<RUN_DATE>/`
+
+> **Tip:** The default 10% utilization creates a large sparse layout. Use `--utilization 40-50` for compact production layouts. Values above 70% may cause routing failures.
+
+### Example: SPI Master
+
+A complete SPI master (Mode 0/3, configurable clock divider, 8-bit TX/RX) was synthesised and laid out using this flow:
+
+```bash
+verilog2gds spi_master.v --utilization 40 --clock-period 10
+```
+
+Results: **227 cells**, Antenna ✅, DRC ✅, LVS ✅, IR drop 0.17%
+
+<p align="center">
+  <img src="./spi.png" alt="SPI Master GDS Layout" width="600"/>
+</p>
+
+---
+
 ## 🙌 Acknowledgments
 
 *   **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus**. ([GitHub](https://github.com/muehlhaus/setupEM))
