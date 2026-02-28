@@ -133,7 +133,7 @@ RUN printf '%s\n' \
     '    if { $endcap ne "" } { lappend args -endcap_master "$endcap" }' \
     '    tapcell {*}$args' \
     '} else {' \
-    '    puts "[INFO] Skipping tapcell insertion (WELLTAP_CELL empty or FP_TAPCELL_DIST=0)"' \
+    '    puts {Skipping tapcell insertion: WELLTAP_CELL empty or FP_TAPCELL_DIST=0}' \
     '}' \
     'write_views' \
     'report_design_area_metrics' \
@@ -142,98 +142,8 @@ RUN printf '%s\n' \
 # Make KLayout available to LibreLane's XOR signoff step
 RUN ln -sf /foss/tools/klayout/klayout /usr/local/bin/klayout
 
-# Install the verilog2gds wrapper script (inlined — no external file needed)
-RUN cat > /usr/local/bin/verilog2gds << 'SCRIPT'
-#!/usr/bin/env python3
-import os, sys, json, argparse, subprocess
-from pathlib import Path
-
-def main():
-parser = argparse.ArgumentParser(description="Run Verilog to GDS using LibreLane.")
-parser.add_argument("verilog_file")
-parser.add_argument("--module", "-m")
-parser.add_argument("--clock-port", "-c", default="clk")
-parser.add_argument("--clock-period", "-p", type=float, default=10.0)
-parser.add_argument("--utilization", "-u", type=float, default=10)
-parser.add_argument("--pdk", default="ihp-sg13g2")
-parser.add_argument("--full-timing", action="store_true")
-args = parser.parse_args()
-
-verilog_path = Path(args.verilog_file).resolve()
-if not verilog_path.exists():
-print(f"Error: '{verilog_path}' not found."); sys.exit(1)
-
-top_module = args.module or verilog_path.stem
-run_dir = verilog_path.parent.resolve() / f"{top_module}_run"
-print(f"[*] Preparing workspace: {run_dir}")
-os.makedirs(run_dir / "src", exist_ok=True)
-subprocess.run(["cp", str(verilog_path), str(run_dir / "src/")], check=True)
-
-config = {
-"DESIGN_NAME": top_module,
-"VERILOG_FILES": f"dir::src/{verilog_path.name}",
-"CLOCK_PORT": args.clock_port,
-"CLOCK_PERIOD": args.clock_period,
-"FP_SIZING": "relative",
-"FP_CORE_UTIL": args.utilization,
-"PDK": args.pdk
-}
-
-if args.pdk == "sky130A":
-config["STD_CELL_LIBRARY"] = "sky130_fd_sc_hd"
-elif args.pdk == "ihp-sg13g2":
-config["STD_CELL_LIBRARY"] = "sg13g2_stdcell"
-config["FILL_CELL"] = "sg13g2_fill_1 sg13g2_fill_2"
-config["DECAP_CELL"] = "sg13g2_decap_*"
-config["FP_TAPCELL_DIST"] = 0
-config["WELLTAP_CELL"] = ""
-config["ENDCAP_CELL"] = ""
-config["FP_PDN_RAIL_OFFSET"] = 0
-config["FP_PDN_VWIDTH"] = 2.2; config["FP_PDN_VSPACING"] = 4.0
-config["FP_PDN_VPITCH"] = 75.6; config["FP_PDN_VOFFSET"] = 13.6
-config["FP_PDN_HWIDTH"] = 2.2; config["FP_PDN_HSPACING"] = 4.0
-config["FP_PDN_HPITCH"] = 75.6; config["FP_PDN_HOFFSET"] = 13.6
-config["FP_PDN_CORE_RING_VWIDTH"] = 5.0; config["FP_PDN_CORE_RING_HWIDTH"] = 5.0
-config["FP_PDN_CORE_RING_VSPACING"] = 2.0; config["FP_PDN_CORE_RING_HSPACING"] = 2.0
-config["FP_PDN_CORE_RING_VOFFSET"] = 4.5; config["FP_PDN_CORE_RING_HOFFSET"] = 4.5
-config["FP_PDN_RAIL_LAYER"] = "Metal1"; config["FP_PDN_RAIL_WIDTH"] = 0.44
-config["FP_PDN_HORIZONTAL_LAYER"] = "TopMetal2"
-config["FP_PDN_VERTICAL_LAYER"] = "TopMetal1"
-if args.full_timing:
-config["STA_CORNERS"] = ["nom_typ_1p20V_25C","nom_fast_1p32V_m40C","nom_slow_1p08V_125C"]
-config["LIB"] = {
-"nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"],
-"nom_fast_1p32V_m40C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib"],
-"nom_slow_1p08V_125C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib"]
-}
-else:
-config["STA_CORNERS"] = ["nom_typ_1p20V_25C"]
-config["DEFAULT_CORNER"] = "nom_typ_1p20V_25C"
-config["LIB"] = {"nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"]}
-config["TECH_LEFS"] = {"nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"}
-config["RCX_RULESETS"] = {"nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"}
-if args.full_timing:
-for c in ["nom_fast_1p32V_m40C","nom_slow_1p08V_125C"]:
-config["TECH_LEFS"][c] = "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
-config["RCX_RULESETS"][c] = "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"
-
-with open(run_dir / "config.json", "w") as f:
-json.dump(config, f, indent=4)
-print(f"[*] Generated config.json for {top_module} using {args.pdk} PDK.")
-
-env = os.environ.copy()
-env.pop("STD_CELL_LIBRARY", None); env.pop("PDK", None)
-print(f"[*] Starting LibreLane synthesis...")
-try:
-subprocess.run(f"cd {run_dir} && rm -rf runs && librelane config.json",
-shell=True, check=True, env=env)
-print(f"\n[+] Success! Your GDS outputs are available in:\n    {run_dir}/runs/")
-except subprocess.CalledProcessError as e:
-print(f"\n[-] Error: LibreLane failed (exit code {e.returncode})."); sys.exit(1)
-
-if __name__ == "__main__":
-main()
-SCRIPT
+# Install the verilog2gds wrapper script for easy Verilog to GDS conversion
+COPY verilog2gds /usr/local/bin/verilog2gds
 RUN chmod +x /usr/local/bin/verilog2gds
 
 # Switch back to the base container user id
