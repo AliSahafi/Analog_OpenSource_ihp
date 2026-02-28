@@ -1,4 +1,4 @@
-# Analog OpenSource IHP Complementary Setup
+# Analog, Digital, and RF Open-Source IHP Toolchain Setup
 
 <p align="center">
   <img src="./inductor_mesh.png" alt="Inductor Mesh Preview" width="600"/>
