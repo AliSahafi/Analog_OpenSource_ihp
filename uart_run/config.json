@@ -1,0 +1,9 @@
+"DESIGN_NAME": "uart",
+                 "VERILOG_FILES": "dir::src/uart.v",
+                                  "CLOCK_PORT": "clk",
+                                                "CLOCK_PERIOD": 10.0,
+                                                "FP_SIZING": "absolute",
+                                                             "DIE_AREA": "0 0 100 100",
+                                                                         "PL_TARGET_DENSITY": 0.40,
+                                                                         "PDK": "sky130A"
+}
