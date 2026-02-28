@@ -41,11 +41,11 @@ docker build -t opensource_setupem .
 Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax! We launch the GUI into a headless VNC session over port `:80`.
 
 ```bash
-docker run -d -p 8081:80 -v $(pwd)/inductor_output:/workdir --name analog_sim opensource_setupem
+docker run -d -p 8080:80 -v $(pwd)/inductor_output:/workdir --name analog_sim opensource_setupem
 ```
 
-Navigate to **`http://localhost:8081/`** to access the container via the web GUI.
-For the full desktop experience, navigate to **`http://localhost:8081/vnc.html`** in your web browser.
+Navigate to **`http://localhost:8080/`** to access the container via the web GUI.
+For the full desktop experience, navigate to **`http://localhost:8080/vnc.html`** in your web browser.
 
 > **Note:** The default VNC password for the container is `abc123`
 
