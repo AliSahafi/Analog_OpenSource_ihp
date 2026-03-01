@@ -130,6 +130,9 @@ verilog2gds <your_design.v>
 ```
 usage: verilog2gds [-h] [--module MODULE] [--clock-port CLOCK_PORT]
                    [--clock-period CLOCK_PERIOD] [--utilization UTILIZATION]
+                   [--aspect-ratio ASPECT_RATIO]
+                   [--die-width DIE_WIDTH] [--die-height DIE_HEIGHT]
+                   [--pin-config PIN_CONFIG]
                    [--pdk PDK] [--full-timing]
                    verilog_file
 
@@ -142,6 +145,10 @@ optional arguments:
   --clock-port, -c CLOCK_PORT     Clock port name (default: clk)
   --clock-period, -p CLOCK_PERIOD Clock period in ns (default: 10.0 ns = 100 MHz)
   --utilization, -u UTILIZATION   Core utilization % (default: 10)
+  --aspect-ratio, -r ASPECT_RATIO Chip aspect ratio width/height (default: 1.0 = square)
+  --die-width DIE_WIDTH           Exact die width in microns — overrides utilization/aspect-ratio
+  --die-height DIE_HEIGHT         Exact die height in microns — must be used with --die-width
+  --pin-config PIN_CONFIG         Path to a pin order/placement config file (FP_PIN_ORDER_CFG)
   --pdk PDK                       PDK to use: ihp-sg13g2 or sky130A (default: ihp-sg13g2)
   --full-timing                   Run all 3 timing corners instead of typical only (slower)
 ```
@@ -158,6 +165,15 @@ verilog2gds my_design.v --utilization 50 --clock-period 5
 # Specify a different top module name and clock port
 verilog2gds top.v --module my_top --clock-port sys_clk
 
+# Rectangular chip (1.5× wider than tall)
+verilog2gds my_design.v --aspect-ratio 1.5
+
+# Exact die size: 300 µm × 200 µm (overrides utilization and aspect-ratio)
+verilog2gds my_design.v --die-width 300 --die-height 200
+
+# Custom pin placement from a config file
+verilog2gds my_design.v --die-width 500 --die-height 500 --pin-config ./pins.cfg
+
 # Full 3-corner timing analysis for signoff
 verilog2gds my_design.v --utilization 40 --full-timing
 
@@ -168,6 +184,8 @@ verilog2gds my_design.v --pdk sky130A
 **Output:** GDS files are written to `./<module_name>_run/runs/<RUN_DATE>/`
 
 > **Tip:** The default 10% utilization creates a large sparse layout. Use `--utilization 40-50` for compact production layouts. Values above 70% may cause routing failures.
+>
+> **Tip:** Use `--die-width` / `--die-height` when you need to match a fixed area budget (e.g. a pad frame or tile). This switches LibreLane to absolute floorplan mode and ignores `--utilization` and `--aspect-ratio`.
 
 ### Example: SPI Master
 

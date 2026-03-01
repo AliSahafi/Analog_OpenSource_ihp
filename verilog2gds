@@ -9,9 +9,20 @@ def main():
     parser.add_argument("--clock-port", "-c", default="clk")
     parser.add_argument("--clock-period", "-p", type=float, default=10.0)
     parser.add_argument("--utilization", "-u", type=float, default=10)
+    parser.add_argument("--aspect-ratio", "-r", type=float, default=1.0,
+                        help="Chip aspect ratio width/height (default: 1.0 = square)")
+    parser.add_argument("--die-width", type=float, default=None,
+                        help="Exact die width in microns. Must be used with --die-height.")
+    parser.add_argument("--die-height", type=float, default=None,
+                        help="Exact die height in microns. Must be used with --die-width.")
+    parser.add_argument("--pin-config", type=str, default=None,
+                        help="Path to a pin order/placement config file (FP_PIN_ORDER_CFG)")
     parser.add_argument("--pdk", default="ihp-sg13g2")
     parser.add_argument("--full-timing", action="store_true")
     args = parser.parse_args()
+
+    if (args.die_width is None) != (args.die_height is None):
+        parser.error("--die-width and --die-height must be used together.")
 
     verilog_path = Path(args.verilog_file).resolve()
     if not verilog_path.exists():
@@ -29,10 +40,25 @@ def main():
         "VERILOG_FILES": f"dir::src/{verilog_path.name}",
         "CLOCK_PORT": args.clock_port,
         "CLOCK_PERIOD": args.clock_period,
-        "FP_SIZING": "relative",
-        "FP_CORE_UTIL": args.utilization,
         "PDK": args.pdk
     }
+
+    if args.die_width is not None:
+        # Absolute sizing — exact die dimensions override utilization / aspect-ratio
+        config["FP_SIZING"] = "absolute"
+        config["DIE_AREA"] = f"0 0 {args.die_width} {args.die_height}"
+        print(f"[*] Using absolute die size: {args.die_width} x {args.die_height} µm")
+    else:
+        config["FP_SIZING"] = "relative"
+        config["FP_CORE_UTIL"] = args.utilization
+        config["FP_ASPECT_RATIO"] = args.aspect_ratio
+
+    if args.pin_config:
+        pin_cfg_path = Path(args.pin_config).resolve()
+        if not pin_cfg_path.exists():
+            print(f"Error: pin config file '{pin_cfg_path}' not found.")
+            sys.exit(1)
+        config["FP_PIN_ORDER_CFG"] = str(pin_cfg_path)
 
     if args.pdk == "sky130A":
         config["STD_CELL_LIBRARY"] = "sky130_fd_sc_hd"
