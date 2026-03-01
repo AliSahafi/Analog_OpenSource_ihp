@@ -1,0 +1,8 @@
+# Enforce LF line endings for scripts executed inside Linux containers
+verilog2gds text eol=lf
+*.sh         text eol=lf
+*.py         text eol=lf
+Makefile     text eol=lf
+
+# Treat everything else with automatic line ending normalization
+*            text=auto
