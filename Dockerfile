@@ -73,8 +73,8 @@ RUN wget https://gmsh.info/src/gmsh-4.15.0-source.tgz && \
     cmake -DENABLE_BUILD_DYNAMIC=1 -DENABLE_OCC=1 .. && \
     make -j2 && \
     make install && \
-    ln -s /usr/local/lib/gmsh.py /usr/local/lib/python3.12/dist-packages/gmsh.py && \
-    ln -s /usr/local/lib/libgmsh.so /usr/local/lib/python3.12/dist-packages/libgmsh.so && \
+    ln -sf /usr/local/lib/gmsh.py /usr/local/lib/python3.12/dist-packages/gmsh.py && \
+    ln -sf /usr/local/lib/libgmsh.so /usr/local/lib/python3.12/dist-packages/libgmsh.so && \
     cd .. && \
     rm -rf gmsh-4.15.0-source*
 
