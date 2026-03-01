@@ -41,7 +41,7 @@ docker build -t opensource_setupem .
 Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax! We launch the GUI into a headless VNC session over port `:80`.
 
 ```bash
-docker run -d -p 8080:80 -v $(pwd)/inductor_output:/workdir --name analog_sim opensource_setupem
+docker run -d -p 8080:80 -v "${PWD}/sim_workspace:/workdir" --name analog_sim opensource_setupem
 ```
 
 Navigate to **`http://localhost:8080/`** to access the container via the web GUI.
