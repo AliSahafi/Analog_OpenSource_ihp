@@ -110,19 +110,24 @@ The base `iic-osic-tools` image already includes **LibreLane 2.x, OpenROAD, Yosy
 | Addition | Purpose |
 |----------|---------|
 | `verilog2gds` script | One-command Verilog → GDS automation |
+| `vhdl2gds` script | One-command VHDL → Verilog → GDS automation (Educational) |
 | `verilator` (apt) | Verilog linting and simulation |
 | IHP PDK corner name patches | Fixes `LIB`, `TECH_LEFS`, `RCX_RULESETS` wildcard keys incompatible with LibreLane 2.x |
 | `cut_rows.tcl` patch | Skips endcap insertion gracefully when IHP has no endcap cells |
 | `tapcell.tcl` patch | Skips tapcell insertion when `FP_TAPCELL_DIST=0` (IHP has no tapcells) |
 | `klayout` symlink | Makes KLayout accessible to LibreLane's XOR signoff step |
 
-### Using `verilog2gds`
+### Using `verilog2gds` and `vhdl2gds`
 
-The `verilog2gds` command is available globally inside the container. It takes your Verilog source file and runs the complete RTL-to-GDS flow using LibreLane with the IHP SG13G2 PDK.
+The `verilog2gds` and `vhdl2gds` commands are available globally inside the container. They take your HDL source file and run the complete RTL-to-GDS flow using LibreLane with the IHP SG13G2 PDK.
+
+> **⚠️ Important Notice Regarding VHDL**
+> While `vhdl2gds` is provided for convenience, **Verilog is strongly recommended** for this flow. The `vhdl2gds` script uses Yosys with the GHDL plugin to translate VHDL into Verilog under the hood. It is primarily intended for **educational purposes** and simple designs. For production-grade or complex routing, native Verilog should be used to avoid synthesis bugs.
 
 **Basic usage:**
 ```bash
 verilog2gds <your_design.v>
+vhdl2gds <your_design.vhd>
 ```
 
 **Full argument reference:**
@@ -179,6 +184,9 @@ verilog2gds my_design.v --utilization 40 --full-timing
 
 # Use sky130A PDK instead
 verilog2gds my_design.v --pdk sky130A
+
+# VHDL Example (uses --entity instead of --module)
+vhdl2gds spi_master.vhd --entity spi_master --clock-port clk
 ```
 
 **Output:** GDS files are written to `./<module_name>_run/runs/<RUN_DATE>/`

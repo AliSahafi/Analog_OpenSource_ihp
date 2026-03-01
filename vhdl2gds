@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+import os, sys, json, argparse, subprocess
+from pathlib import Path
+
+def main():
+    parser = argparse.ArgumentParser(description="Run VHDL to GDS using Yosys+GHDL and LibreLane.")
+    parser.add_argument("vhdl_file")
+    parser.add_argument("--entity", "-e", help="Top-level VHDL entity name")
+    parser.add_argument("--clock-port", "-c", default="clk")
+    parser.add_argument("--clock-period", "-p", type=float, default=10.0)
+    parser.add_argument("--utilization", "-u", type=float, default=10)
+    parser.add_argument("--aspect-ratio", "-r", type=float, default=1.0,
+                        help="Chip aspect ratio width/height (default: 1.0 = square)")
+    parser.add_argument("--die-width", type=float, default=None,
+                        help="Exact die width in microns. Must be used with --die-height.")
+    parser.add_argument("--die-height", type=float, default=None,
+                        help="Exact die height in microns. Must be used with --die-width.")
+    parser.add_argument("--pin-config", type=str, default=None,
+                        help="Path to a pin order/placement config file (FP_PIN_ORDER_CFG)")
+    parser.add_argument("--pdk", default="ihp-sg13g2")
+    parser.add_argument("--full-timing", action="store_true")
+    args = parser.parse_args()
+
+    if (args.die_width is None) != (args.die_height is None):
+        parser.error("--die-width and --die-height must be used together.")
+
+    vhdl_path = Path(args.vhdl_file).resolve()
+    if not vhdl_path.exists():
+        print(f"Error: VHDL file '{vhdl_path}' not found.")
+        sys.exit(1)
+
+    top_entity = args.entity or vhdl_path.stem
+    run_dir = vhdl_path.parent.resolve() / f"{top_entity}_run"
+    print(f"[*] Preparing workspace: {run_dir}")
+    os.makedirs(run_dir / "src", exist_ok=True)
+    subprocess.run(["cp", str(vhdl_path), str(run_dir / "src/")], check=True)
+
+    print(f"[*] Converting VHDL to Verilog using Yosys-GHDL...")
+    synth_v_path = run_dir / "src" / f"{top_entity}_synth.v"
+    
+    # We run Yosys with the GHDL plugin
+    # yosys -m ghdl -p 'ghdl my_design.vhd -e my_top_entity; synth -top my_top_entity; write_verilog my_design_synth.v'
+    yosys_cmd = [
+        "yosys",
+        "-m", "ghdl",
+        "-p", f"ghdl {vhdl_path.name} -e {top_entity}; synth -top {top_entity}; write_verilog {synth_v_path.name}"
+    ]
+    
+    try:
+        subprocess.run(yosys_cmd, cwd=run_dir/"src", check=True)
+        print(f"[*] Successfully created structural Verilog netlist: {synth_v_path.name}")
+    except subprocess.CalledProcessError as e:
+        print(f"\n[-] Error: VHDL-to-Verilog synthesis with Yosys/GHDL failed.")
+        sys.exit(1)
+
+    config = {
+        "DESIGN_NAME": top_entity,
+        "VERILOG_FILES": f"dir::src/{synth_v_path.name}",
+        "CLOCK_PORT": args.clock_port,
+        "CLOCK_PERIOD": args.clock_period,
+        "PDK": args.pdk
+    }
+
+    if args.die_width is not None:
+        config["FP_SIZING"] = "absolute"
+        config["DIE_AREA"] = f"0 0 {args.die_width} {args.die_height}"
+        print(f"[*] Using absolute die size: {args.die_width} x {args.die_height} µm")
+    else:
+        config["FP_SIZING"] = "relative"
+        config["FP_CORE_UTIL"] = args.utilization
+        config["FP_ASPECT_RATIO"] = args.aspect_ratio
+
+    if args.pin_config:
+        pin_cfg_path = Path(args.pin_config).resolve()
+        if not pin_cfg_path.exists():
+            print(f"Error: pin config file '{pin_cfg_path}' not found.")
+            sys.exit(1)
+        config["FP_PIN_ORDER_CFG"] = str(pin_cfg_path)
+
+    if args.pdk == "sky130A":
+        config["STD_CELL_LIBRARY"] = "sky130_fd_sc_hd"
+    elif args.pdk == "ihp-sg13g2":
+        config["STD_CELL_LIBRARY"] = "sg13g2_stdcell"
+        config["FILL_CELL"] = "sg13g2_fill_1 sg13g2_fill_2"
+        config["DECAP_CELL"] = "sg13g2_decap_*"
+        config["FP_TAPCELL_DIST"] = 0
+        config["WELLTAP_CELL"] = ""
+        config["ENDCAP_CELL"] = ""
+        config["FP_PDN_RAIL_OFFSET"] = 0
+        config["FP_PDN_VWIDTH"] = 2.2
+        config["FP_PDN_VSPACING"] = 4.0
+        config["FP_PDN_VPITCH"] = 75.6
+        config["FP_PDN_VOFFSET"] = 13.6
+        config["FP_PDN_HWIDTH"] = 2.2
+        config["FP_PDN_HSPACING"] = 4.0
+        config["FP_PDN_HPITCH"] = 75.6
+        config["FP_PDN_HOFFSET"] = 13.6
+        config["FP_PDN_CORE_RING_VWIDTH"] = 5.0
+        config["FP_PDN_CORE_RING_HWIDTH"] = 5.0
+        config["FP_PDN_CORE_RING_VSPACING"] = 2.0
+        config["FP_PDN_CORE_RING_HSPACING"] = 2.0
+        config["FP_PDN_CORE_RING_VOFFSET"] = 4.5
+        config["FP_PDN_CORE_RING_HOFFSET"] = 4.5
+        config["FP_PDN_RAIL_LAYER"] = "Metal1"
+        config["FP_PDN_RAIL_WIDTH"] = 0.44
+        config["FP_PDN_HORIZONTAL_LAYER"] = "TopMetal2"
+        config["FP_PDN_VERTICAL_LAYER"] = "TopMetal1"
+        if args.full_timing:
+            config["STA_CORNERS"] = ["nom_typ_1p20V_25C", "nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"]
+            config["LIB"] = {
+                "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"],
+                "nom_fast_1p32V_m40C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib"],
+                "nom_slow_1p08V_125C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib"]
+            }
+        else:
+            config["STA_CORNERS"] = ["nom_typ_1p20V_25C"]
+            config["DEFAULT_CORNER"] = "nom_typ_1p20V_25C"
+            config["LIB"] = {
+                "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"]
+            }
+        config["TECH_LEFS"] = {
+            "nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
+        }
+        config["RCX_RULESETS"] = {
+            "nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"
+        }
+        if args.full_timing:
+            for c in ["nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"]:
+                config["TECH_LEFS"][c] = "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
+                config["RCX_RULESETS"][c] = "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"
+
+    with open(run_dir / "config.json", "w") as f:
+        json.dump(config, f, indent=4)
+    print(f"[*] Generated config.json for {top_entity} using {args.pdk} PDK.")
+
+    env = os.environ.copy()
+    env.pop("STD_CELL_LIBRARY", None)
+    env.pop("PDK", None)
+    print(f"[*] Starting LibreLane synthesis...")
+    try:
+        subprocess.run(
+            f"cd {run_dir} && rm -rf runs && librelane config.json",
+            shell=True, check=True, env=env
+        )
+        print(f"\n[+] Success! Your GDS outputs are available in:\n    {run_dir}/runs/")
+    except subprocess.CalledProcessError as e:
+        print(f"\n[-] Error: LibreLane execution failed (exit code {e.returncode}). see output above.")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

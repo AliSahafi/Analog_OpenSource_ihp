@@ -142,9 +142,12 @@ RUN printf '%s\n' \
 # Make KLayout available to LibreLane's XOR signoff step
 RUN ln -sf /foss/tools/klayout/klayout /usr/local/bin/klayout
 
-# Install the verilog2gds wrapper script for easy Verilog to GDS conversion
+# Install the verilog2gds and vhdl2gds wrapper scripts for easy HDL to GDS conversion
 COPY verilog2gds /usr/local/bin/verilog2gds
 RUN chmod +x /usr/local/bin/verilog2gds
+
+COPY vhdl2gds /usr/local/bin/vhdl2gds
+RUN chmod +x /usr/local/bin/vhdl2gds
 
 # Switch back to the base container user id
 USER 1000
