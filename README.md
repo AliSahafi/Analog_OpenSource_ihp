@@ -10,7 +10,7 @@ This complementary repository provides an enhanced Dockerfile alongside post-pro
 
 This setup is built on top of the excellent base image provided by the [IIC-OSIC-TOOLS project on GitHub](https://github.com/iic-jku/iic-osic-tools) (Docker: `hpretl/iic-osic-tools`), which provides a vast collection of analog and digital EDA tools.
 
-However, for fully simulating and meshing RF structures, this repository extends the environment with additional steps to support [Volker Muehlhaus's setupEM tool](https://github.com/muehlhaus/setupEM) and the `AWS Palace` 3D EM simulator. The included Python plotting script (`plot_inductor.py`) was also originally provided by Volker Muehlhaus.
+However, for fully simulating and meshing RF structures, this repository extends the environment with additional steps to support [Volker Muehlhaus's setupEM tool](https://github.com/volkermuehlhaus/setupEM) and the `AWS Palace` 3D EM simulator. The included Python plotting script (`plot_inductor.py`) was also originally provided by Volker Muehlhaus.
 
 This repository automatically applies these patches to your local container.
 
@@ -54,10 +54,10 @@ From the XFCE Desktop Terminal within your browser, you can directly run:
 
 ```bash
 setupEM
-# -> GUI and setup tool for the gds2palace RFIC FEM simulation workflow.
+# -> GUI for Palace only, featuring a more guided GUI structure.
 
 EMStudio
-# -> Open-source electromagnetic field simulation software using the FDTD method.
+# -> Electromagnetic field simulation software supporting both openEMS and Palace. Allows users to enter settings in GUI or code, with bi-directional sync between code and settings grid.
 
 KLayout.sh
 # -> Launches KLayout with the EMStudio driver fully integrated!
@@ -213,6 +213,6 @@ Results: **227 cells**, Antenna ✅, DRC ✅, LVS ✅, IR drop 0.17%
 
 ## 🙌 Acknowledgments
 
-*   **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus**. ([GitHub](https://github.com/muehlhaus/setupEM))
+*   **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus**. ([GitHub](https://github.com/volkermuehlhaus/setupEM))
 *   **plot_inductor.py**: The plotting script provided in this repository was originally authored by **Volker Muehlhaus**.
 *   **Base Docker Image**: The underlying IC design environment is provided by the excellent **IIC-OSIC-TOOLS** project. ([GitHub](https://github.com/iic-jku/iic-osic-tools) | [Docker Hub](https://hub.docker.com/r/hpretl/iic-osic-tools))
