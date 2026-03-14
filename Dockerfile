@@ -50,7 +50,7 @@ RUN git clone https://github.com/IHP-GmbH/EMStudio.git /tmp/emstudio && \
     mkdir -p /tmp/emstudio/build && \
     cd /tmp/emstudio/build && \
     qmake ../EMStudio.pro && \
-    make -j2 && \
+    make -j4 && \
     mkdir -p /opt/emstudio && \
     cp EMStudio /opt/emstudio/ && \
     cp -R ../scripts /opt/emstudio/ && \
@@ -71,7 +71,7 @@ RUN wget https://gmsh.info/src/gmsh-4.15.0-source.tgz && \
     cd gmsh-4.15.0-source && \
     mkdir build && cd build && \
     cmake -DENABLE_BUILD_DYNAMIC=1 -DENABLE_OCC=1 .. && \
-    make -j2 && \
+    make -j4 && \
     make install && \
     ln -sf /usr/local/lib/gmsh.py /usr/local/lib/python3.12/dist-packages/gmsh.py && \
     ln -sf /usr/local/lib/libgmsh.so /usr/local/lib/python3.12/dist-packages/libgmsh.so && \
