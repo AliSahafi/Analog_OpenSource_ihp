@@ -19,6 +19,7 @@ This repository automatically applies these patches to your local container.
 2.  **Volker's setupEM Tool**: Pip installs `setupEM` alongside precisely pinned dependencies (`gds2palace==0.1.19`, `gdspy==1.6.13`).
 3.  **IHP EMStudio GUI**: Clones, compiles, and installs the official `IHP-GmbH/EMStudio` repository from source.
 4.  **Global Script Execution Fixes**: Exposes `setupEM`, `EMStudio`, and essential post-processing commands right into your system PATH. It additionally patches the `combine_snp` executable from the localized PDK folder to globally run using your active python interpreter.
+5.  **Desktop Customization**: Added support for custom high-quality desktop wallpapers and glassmorphism UI configuration for the VNC/browser environment.
 
 ---
 
@@ -139,6 +140,9 @@ usage: verilog2gds [-h] [--module MODULE] [--clock-port CLOCK_PORT]
                    [--die-width DIE_WIDTH] [--die-height DIE_HEIGHT]
                    [--pin-config PIN_CONFIG]
                    [--pdk PDK] [--full-timing]
+                   [--extra-libs [EXTRA_LIBS ...]]
+                   [--extra-lefs [EXTRA_LEFS ...]]
+                   [--output-load OUTPUT_LOAD] [--max-fanout MAX_FANOUT]
                    verilog_file
 
 positional arguments:
@@ -156,6 +160,10 @@ optional arguments:
   --pin-config PIN_CONFIG         Path to a pin order/placement config file (FP_PIN_ORDER_CFG)
   --pdk PDK                       PDK to use: ihp-sg13g2 or sky130A (default: ihp-sg13g2)
   --full-timing                   Run all 3 timing corners instead of typical only (slower)
+  --extra-libs [EXTRA_LIBS ...]   Path to one or more extra .lib files to include
+  --extra-lefs [EXTRA_LEFS ...]   Path to one or more extra .lef files to include
+  --output-load OUTPUT_LOAD       Output capacitive load in fF (OUTPUT_CAP_LOAD)
+  --max-fanout MAX_FANOUT         Maximum fanout constraint for synthesis
 ```
 
 **Examples:**
