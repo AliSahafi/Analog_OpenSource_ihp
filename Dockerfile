@@ -163,3 +163,11 @@ ENV PATH="/opt/emstudio/scripts:/foss/pdks/ihp-sg13g2/libs.tech/palace/scripts:/
 
 # Set default working directory
 WORKDIR /design
+
+# Add custom desktop background
+# USER root
+# COPY desktop_background.png /headless/.config/background.png
+# COPY xfce4-desktop.xml /headless/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+# RUN chown 1000:1000 /headless/.config/background.png \
+#     /headless/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+# USER 1000

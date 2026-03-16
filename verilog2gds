@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-import os, sys, json, argparse, subprocess
+import argparse
+import os
+import subprocess
+import signal
+import sys
+import json
 from pathlib import Path
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Verilog to GDS using LibreLane.")
-    parser.add_argument("verilog_file")
-    parser.add_argument("--module", "-m")
-    parser.add_argument("--clock-port", "-c", default="clk")
-    parser.add_argument("--clock-period", "-p", type=float, default=10.0)
-    parser.add_argument("--utilization", "-u", type=float, default=10)
-    parser.add_argument("--aspect-ratio", "-r", type=float, default=1.0,
-                        help="Chip aspect ratio width/height (default: 1.0 = square)")
+    parser = argparse.ArgumentParser(description="HDL to GDS Flow Wrapper (IHP SG13G2)")
+    parser.add_argument("verilog_file", help="Path to the top-level Verilog file")
+    parser.add_argument("-m", "--module", help="Top module name (defaults to filename)")
+    parser.add_argument("-c", "--clock-port", default="clk", help="Clock port name")
+    parser.add_argument("-p", "--clock-period", type=float, default=20.0, help="Clock period in ns")
+    parser.add_argument("-u", "--utilization", type=int, default=30, help="Core utilization (1-100)")
+    parser.add_argument("-a", "--aspect-ratio", type=float, default=1.0, help="Core aspect ratio (H/W)")
     parser.add_argument("--die-width", type=float, default=None,
                         help="Exact die width in microns. Must be used with --die-height.")
     parser.add_argument("--die-height", type=float, default=None,
@@ -19,6 +23,13 @@ def main():
                         help="Path to a pin order/placement config file (FP_PIN_ORDER_CFG)")
     parser.add_argument("--pdk", default="ihp-sg13g2")
     parser.add_argument("--full-timing", action="store_true")
+    
+    # New arguments
+    parser.add_argument("--extra-libs", nargs="*", default=[], help="Extra .lib files")
+    parser.add_argument("--extra-lefs", nargs="*", default=[], help="Extra .lef files")
+    parser.add_argument("--output-load", type=float, default=None, help="Output load in fF (OUTPUT_CAP_LOAD)")
+    parser.add_argument("--max-fanout", type=int, default=None, help="Max fanout constraint")
+    
     args = parser.parse_args()
 
     if (args.die_width is None) != (args.die_height is None):
@@ -43,8 +54,12 @@ def main():
         "PDK": args.pdk
     }
 
+    if args.output_load is not None:
+        config["OUTPUT_CAP_LOAD"] = args.output_load
+    if args.max_fanout is not None:
+        config["MAX_FANOUT_CONSTRAINT"] = args.max_fanout
+
     if args.die_width is not None:
-        # Absolute sizing — exact die dimensions override utilization / aspect-ratio
         config["FP_SIZING"] = "absolute"
         config["DIE_AREA"] = f"0 0 {args.die_width} {args.die_height}"
         print(f"[*] Using absolute die size: {args.die_width} x {args.die_height} µm")
@@ -58,56 +73,39 @@ def main():
         if not pin_cfg_path.exists():
             print(f"Error: pin config file '{pin_cfg_path}' not found.")
             sys.exit(1)
-        config["FP_PIN_ORDER_CFG"] = str(pin_cfg_path)
+        subprocess.run(["cp", str(pin_cfg_path), str(run_dir / "src/")], check=True)
+        config["FP_PIN_ORDER_CFG"] = f"dir::src/{pin_cfg_path.name}"
 
-    if args.pdk == "sky130A":
-        config["STD_CELL_LIBRARY"] = "sky130_fd_sc_hd"
-    elif args.pdk == "ihp-sg13g2":
-        config["STD_CELL_LIBRARY"] = "sg13g2_stdcell"
-        config["FILL_CELL"] = "sg13g2_fill_1 sg13g2_fill_2"
-        config["DECAP_CELL"] = "sg13g2_decap_*"
-        config["FP_TAPCELL_DIST"] = 0
-        config["WELLTAP_CELL"] = ""
-        config["ENDCAP_CELL"] = ""
-        config["FP_PDN_RAIL_OFFSET"] = 0
-        config["FP_PDN_VWIDTH"] = 2.2
-        config["FP_PDN_VSPACING"] = 4.0
-        config["FP_PDN_VPITCH"] = 75.6
-        config["FP_PDN_VOFFSET"] = 13.6
-        config["FP_PDN_HWIDTH"] = 2.2
-        config["FP_PDN_HSPACING"] = 4.0
-        config["FP_PDN_HPITCH"] = 75.6
-        config["FP_PDN_HOFFSET"] = 13.6
-        config["FP_PDN_CORE_RING_VWIDTH"] = 5.0
-        config["FP_PDN_CORE_RING_HWIDTH"] = 5.0
-        config["FP_PDN_CORE_RING_VSPACING"] = 2.0
-        config["FP_PDN_CORE_RING_HSPACING"] = 2.0
-        config["FP_PDN_CORE_RING_VOFFSET"] = 4.5
-        config["FP_PDN_CORE_RING_HOFFSET"] = 4.5
-        config["FP_PDN_RAIL_LAYER"] = "Metal1"
-        config["FP_PDN_RAIL_WIDTH"] = 0.44
-        config["FP_PDN_HORIZONTAL_LAYER"] = "TopMetal2"
-        config["FP_PDN_VERTICAL_LAYER"] = "TopMetal1"
-        if args.full_timing:
-            config["STA_CORNERS"] = ["nom_typ_1p20V_25C", "nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"]
-            config["LIB"] = {
-                "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"],
-                "nom_fast_1p32V_m40C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib"],
-                "nom_slow_1p08V_125C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib"]
-            }
-        else:
-            config["STA_CORNERS"] = ["nom_typ_1p20V_25C"]
-            config["DEFAULT_CORNER"] = "nom_typ_1p20V_25C"
-            config["LIB"] = {
-                "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"]
-            }
+    # PDK specific settings
+    if args.pdk == "ihp-sg13g2":
+        config["STA_CORNERS"] = ["nom_typ_1p20V_25C"]
+        config["DEFAULT_CORNER"] = "nom_typ_1p20V_25C"
+        config["LIB"] = {
+            "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"]
+        }
+        if args.extra_libs:
+            config["LIB"]["nom_typ_1p20V_25C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+
         config["TECH_LEFS"] = {
             "nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
         }
         config["RCX_RULESETS"] = {
             "nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"
         }
+        
+        if args.extra_lefs:
+            config["EXTRA_LEFS"] = [str(Path(l).resolve()) for l in args.extra_lefs]
+
         if args.full_timing:
+            config["STA_CORNERS"].extend(["nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"])
+            config["LIB"].update({
+                "nom_fast_1p32V_m40C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib"],
+                "nom_slow_1p08V_125C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib"]
+            })
+            if args.extra_libs:
+                config["LIB"]["nom_fast_1p32V_m40C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+                config["LIB"]["nom_slow_1p08V_125C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+            
             for c in ["nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"]:
                 config["TECH_LEFS"][c] = "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
                 config["RCX_RULESETS"][c] = "/foss/pdks/ihp-sg13g2/libs.tech/librelane/openrcx/ihp-sg13g2.nom.magic.rules"
