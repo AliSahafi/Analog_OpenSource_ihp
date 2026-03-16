@@ -19,7 +19,6 @@ This repository automatically applies these patches to your local container.
 2.  **Volker's setupEM Tool**: Pip installs `setupEM` alongside precisely pinned dependencies (`gds2palace==0.1.19`, `gdspy==1.6.13`).
 3.  **IHP EMStudio GUI**: Clones, compiles, and installs the official `IHP-GmbH/EMStudio` repository from source.
 4.  **Global Script Execution Fixes**: Exposes `setupEM`, `EMStudio`, and essential post-processing commands right into your system PATH. It additionally patches the `combine_snp` executable from the localized PDK folder to globally run using your active python interpreter.
-5.  **Desktop Customization**: Added support for custom high-quality desktop wallpapers and glassmorphism UI configuration for the VNC/browser environment.
 
 ---
 
