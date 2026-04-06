@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import skrf as rf
 import math
 import sys
@@ -290,7 +291,7 @@ ax.grid()
 
 
 fig1.tight_layout()
-fig1.savefig("/workdir/inductor_plot_diff.png")
+fig1.savefig("inductor_plot_diff.png")
 fig2.tight_layout()
-fig2.savefig("/workdir/inductor_plot_pi.png")
+fig2.savefig("inductor_plot_pi.png")
 
