@@ -1,0 +1,5 @@
+# Local environment overrides
+.env
+
+# User design files (mount point — not part of the toolset)
+designs/

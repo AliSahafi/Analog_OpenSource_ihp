@@ -1,0 +1,17 @@
+services:
+  ihp-osic:
+    image: ihp-osic-tools:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ihp-osic
+    ports:
+      - "${NOVNC_PORT:-8080}:80"      # noVNC browser desktop → http://localhost:8080
+      - "${VNC_PORT:-5902}:5901"       # VNC client            → localhost:5902
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - "${DESIGNS:-./designs}:/foss/designs:rw"
+    environment:
+      - PALACE_NP=${PALACE_NP:-}       # MPI cores for Palace (default: all cores)
+    restart: unless-stopped
+    shm_size: "512m"                   # prevents shared-memory errors in OpenROAD/KLayout

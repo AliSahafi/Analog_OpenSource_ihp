@@ -4,94 +4,124 @@
   <img src="./inductor_mesh.png" alt="Inductor Mesh Preview" width="600"/>
 </p>
 
-This complementary repository provides an enhanced Dockerfile alongside post-processing scripts specifically designed for working with the IHP SG13G2 open-source PDK inside the `iic-osic-tools` environment.
+This repository provides an enhanced Dockerfile and post-processing scripts for working with the **IHP SG13G2 open-source 130nm PDK** inside the `iic-osic-tools` environment.
 
 ## Overview
 
-This setup is built on top of the excellent base image provided by the [IIC-OSIC-TOOLS project on GitHub](https://github.com/iic-jku/iic-osic-tools) (Docker: `hpretl/iic-osic-tools`), which provides a vast collection of analog and digital EDA tools.
+Built on top of [IIC-OSIC-TOOLS](https://github.com/iic-jku/iic-osic-tools) (`hpretl/iic-osic-tools:latest`), which already bundles 100+ analog/digital EDA tools (KLayout, OpenROAD, Yosys, Magic, Netgen, LibreLane, and more).
 
-However, for fully simulating and meshing RF structures, this repository extends the environment with additional steps to support [Volker Muehlhaus's setupEM tool](https://github.com/volkermuehlhaus/setupEM) and the `AWS Palace` 3D EM simulator. The included Python plotting script (`plot_inductor.py`) was also originally provided by Volker Muehlhaus.
+This repo extends the base image with:
 
-This repository automatically applies these patches to your local container.
-
-### Included Patches & Additions:
-1.  **Gmsh with OpenCASCADE Support**: Compiles `gmsh` 4.15.0 from source natively with `-DENABLE_OCC=1`, enabling 3D boolean operations and geometry processing required by `gds2palace`.
-2.  **Volker's setupEM Tool**: Pip installs `setupEM` alongside precisely pinned dependencies (`gds2palace==0.1.19`, `gdspy==1.6.13`).
-3.  **IHP EMStudio GUI**: Clones, compiles, and installs the official `IHP-GmbH/EMStudio` repository from source.
-4.  **Global Script Execution Fixes**: Exposes `setupEM`, `EMStudio`, and essential post-processing commands right into your system PATH. It additionally patches the `combine_snp` executable from the localized PDK folder to globally run using your active python interpreter.
+| Addition | Purpose |
+|----------|---------|
+| **EMStudio** (compiled from source) | IHP's Qt5-based EM structure editor — supports openEMS and Palace |
+| **setupEM + gds2palace** | Guided GUI for Palace EM simulations; GDS-to-Palace geometry converter |
+| **gmsh 4.15.0** (arm64 source build) | 3D mesh generator with OpenCASCADE; pre-installed by base on x86_64 |
+| **plot_inductor.py** | S-parameter post-processing and inductor characterisation |
+| **verilog2gds** | One-command Verilog → GDS via LibreLane + IHP SG13G2 |
+| **vhdl2gds** | One-command VHDL → GDS via LibreLane + IHP SG13G2 |
+| **IHP PDK patches** | Corner name fixes, PDN variables, and Tcl script patches for LibreLane 2.x |
+| **Shell aliases** | `emstudio`, `inductor`, `pdk-ihp` shortcuts in every terminal |
+| **XFCE desktop shortcut** | EMStudio launcher in the Applications menu |
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 Quick Start
 
 ### 1. Requirements
 
-Before starting, ensure you have **Docker Desktop** (or a compatible Docker engine) installed and running on your system.
+- **Docker** (Desktop or Engine) installed and running
+- **Docker Compose** (included in Docker Desktop; or `docker compose` plugin)
 
-### 2. Download & Build Container
-Clone this repository and build the container locally. You only need to do this once.
+### 2. Clone & Launch
 
 ```bash
 git clone https://github.com/AliSahafi/Analog_OpenSource_ihp.git
 cd Analog_OpenSource_ihp
-docker build -t opensource_setupem .
+
+# (Optional) copy and edit the configuration file
+cp .env.example .env
+
+# Create the local designs folder
+mkdir -p designs
+
+# Build the image and start the container
+docker compose up -d --build
 ```
 
-### 3. Run Container
-Launch the built image using the provided `hpretl/iic-osic-tools` wrapper syntax! We launch the GUI into a headless VNC session over port `:80`.
+The first build takes ~10–20 min (compiles EMStudio from source).
 
-```bash
-docker run -d -p 8080:80 -v "${PWD}/sim_workspace:/workdir" --name analog_sim opensource_setupem
+### 3. Open the Desktop
+
+Navigate to **`http://localhost:8080/vnc.html`** in your browser for the full noVNC desktop.
+
+> VNC client: connect to `localhost:5902`
+> Default VNC password: `abc123`
+
+### 4. Your Design Files
+
+Your local `./designs/` folder is mounted inside the container at `/foss/designs` (the default working directory). Anything saved there persists on your host after the container stops.
+
+### 5. Configuration (Optional)
+
+Edit `.env` (copied from `.env.example`) to override defaults:
+
+```ini
+NOVNC_PORT=8080      # browser desktop port
+VNC_PORT=5902        # VNC client port
+DESIGNS=./designs    # host path for design files
+PALACE_NP=4          # MPI cores for Palace (default: all cores)
 ```
 
-Navigate to **`http://localhost:8080/`** to access the container via the web GUI.
-For the full desktop experience, navigate to **`http://localhost:8080/vnc.html`** in your web browser.
-
-> **Note:** The default VNC password for the container is `abc123`
-
-### 4. Start Simulations!
-From the XFCE Desktop Terminal within your browser, you can directly run:
+### Useful Commands
 
 ```bash
+docker compose up -d          # start container (uses cached image)
+docker compose up -d --build  # rebuild image and start
+docker compose down           # stop and remove container
+docker compose logs -f        # follow container logs
+```
+
+---
+
+## 🧲 RF/EM Flow — EMStudio & Palace
+
+From the XFCE desktop terminal inside the browser:
+
+```bash
+EMStudio     # or type: emstudio
 setupEM
-# -> GUI for Palace only, featuring a more guided GUI structure.
-
-EMStudio
-# -> Electromagnetic field simulation software supporting both openEMS and Palace. Allows users to enter settings in GUI or code, with bi-directional sync between code and settings grid.
-
-KLayout.sh
-# -> Launches KLayout with the EMStudio driver fully integrated!
+KLayout.sh   # KLayout with EMStudio driver integrated
 ```
 
-**EMStudio Configuration Setup:**
-When launching EMStudio for the first time, open **Setup -> Preferences** and ensure the following paths are configured:
+**First-time EMStudio setup** — open **Setup → Preferences** and set:
 
-*   **EMStudio -> MODEL_TEMPLATES_DIR:** `/opt/emstudio/scripts`
-*   **OpenEMS -> Python Path:** `/usr/bin/python3`
-*   **Palace -> PALACE_RUN_MODE:** `Script`
-*   **Palace -> PALACE_RUN_SCRIPT:** `/opt/emstudio/scripts/run_palace`
+| Setting | Value |
+|---------|-------|
+| EMStudio → `MODEL_TEMPLATES_DIR` | `/opt/emstudio/scripts` |
+| OpenEMS → `Python Path` | `/usr/bin/python3` |
+| Palace → `PALACE_RUN_MODE` | `Script` |
+| Palace → `PALACE_RUN_SCRIPT` | `/opt/emstudio/scripts/run_palace` |
+
+Palace runs with all available CPU cores by default. Override with `PALACE_NP=4` in `.env`.
 
 ---
 
 ## 📈 Post-Processing S-Parameters
 
-Included in this repository is `plot_inductor.py`. When your RF simulation in `palace` finishes, it will generate an output directory (e.g. `palace_model/inductor_output`). 
-
-You can extract that folder and run this script locally using `scikit-rf` to plot your parameters smoothly!
+`plot_inductor.py` is available directly inside the container (and in this repo for local use).
 
 ```bash
-pip install scikit-rf matplotlib
-
-# Generic usage:
-python3 plot_inductor.py <path_to_s2p_file> <path_to_deembedded_s2p_file>
+# Inside the container:
+inductor <path_to_s2p_file> <path_to_deembedded_s2p_file>
 
 # Example for the 500pH Inductor:
-python3 plot_inductor.py ./inductor_500pH_with_ports.s2p ./inductor_500pH_with_ports_deembedded.s2p
+inductor ./inductor_500pH_with_ports.s2p ./inductor_500pH_with_ports_deembedded.s2p
 ```
 
-This will output two graphical figures (defaulting to inductor naming):
--   `inductor_plot_diff.png` (Differential Inductor Parameters - L, Q, R)
--   `inductor_plot_pi.png` (Pi Model Parameters)
+Outputs two PNG figures to your working directory:
+- `inductor_plot_diff.png` — Differential parameters (L, Q, R)
+- `inductor_plot_pi.png` — Pi-model parameters
 
 <p align="center">
   <img src="./Figure_1.png" alt="Plot Result" width="600"/>
@@ -99,48 +129,27 @@ This will output two graphical figures (defaulting to inductor naming):
 
 ---
 
----
+## 🔲 Digital Flow — Verilog/VHDL to GDS (IHP SG13G2)
 
-## 🔲 Digital Flow — Verilog to GDS (IHP SG13G2)
+`verilog2gds` and `vhdl2gds` are available globally inside the container. They generate a LibreLane `config.json` for IHP SG13G2 and run the complete RTL-to-GDS flow.
 
-The base `iic-osic-tools` image already includes **LibreLane 2.x, OpenROAD, Yosys, Magic, and Netgen** for digital design. However, the IHP SG13G2 PDK configuration had several incompatibilities with LibreLane 2.x that prevented a working Verilog-to-GDS flow. This repository adds the following fixes and tools:
-
-### What Was Added
-
-| Addition | Purpose |
-|----------|---------|
-| `verilog2gds` script | One-command Verilog → GDS automation |
-| `vhdl2gds` script | One-command VHDL → Verilog → GDS automation (Educational) |
-| `verilator` (apt) | Verilog linting and simulation |
-| IHP PDK corner name patches | Fixes `LIB`, `TECH_LEFS`, `RCX_RULESETS` wildcard keys incompatible with LibreLane 2.x |
-| `cut_rows.tcl` patch | Skips endcap insertion gracefully when IHP has no endcap cells |
-| `tapcell.tcl` patch | Skips tapcell insertion when `FP_TAPCELL_DIST=0` (IHP has no tapcells) |
-| `klayout` symlink | Makes KLayout accessible to LibreLane's XOR signoff step |
-
-### Using `verilog2gds` and `vhdl2gds`
-
-The `verilog2gds` and `vhdl2gds` commands are available globally inside the container. They take your HDL source file and run the complete RTL-to-GDS flow using LibreLane with the IHP SG13G2 PDK.
-
-> **⚠️ Important Notice Regarding VHDL**
-> While `vhdl2gds` is provided for convenience, **Verilog is strongly recommended** for this flow. The `vhdl2gds` script uses Yosys with the GHDL plugin to translate VHDL into Verilog under the hood. It is primarily intended for **educational purposes** and simple designs. For production-grade or complex routing, native Verilog should be used to avoid synthesis bugs.
+> **⚠️ VHDL Note:** `vhdl2gds` uses Yosys + GHDL plugin. It is intended for **educational use** on simple designs. For production flows, use Verilog.
 
 **Basic usage:**
+
 ```bash
-verilog2gds <your_design.v>
-vhdl2gds <your_design.vhd>
+verilog2gds counter.v
+vhdl2gds spi_master.vhd
 ```
 
 **Full argument reference:**
 
 ```
-usage: verilog2gds [-h] [--module MODULE] [--clock-port CLOCK_PORT]
-                   [--clock-period CLOCK_PERIOD] [--utilization UTILIZATION]
-                   [--aspect-ratio ASPECT_RATIO]
+usage: verilog2gds [-h] [-m MODULE] [-c CLOCK_PORT] [-p CLOCK_PERIOD]
+                   [-u UTILIZATION] [-a ASPECT_RATIO]
                    [--die-width DIE_WIDTH] [--die-height DIE_HEIGHT]
-                   [--pin-config PIN_CONFIG]
-                   [--pdk PDK] [--full-timing]
-                   [--extra-libs [EXTRA_LIBS ...]]
-                   [--extra-lefs [EXTRA_LEFS ...]]
+                   [--pin-config PIN_CONFIG] [--pdk PDK] [--full-timing]
+                   [--extra-libs [...]] [--extra-lefs [...]]
                    [--output-load OUTPUT_LOAD] [--max-fanout MAX_FANOUT]
                    verilog_file
 
@@ -149,62 +158,46 @@ positional arguments:
 
 optional arguments:
   -h, --help                      Show this help message and exit
-  --module, -m MODULE             Top module name (default: filename stem)
-  --clock-port, -c CLOCK_PORT     Clock port name (default: clk)
-  --clock-period, -p CLOCK_PERIOD Clock period in ns (default: 10.0 ns = 100 MHz)
-  --utilization, -u UTILIZATION   Core utilization % (default: 10)
-  --aspect-ratio, -r ASPECT_RATIO Chip aspect ratio width/height (default: 1.0 = square)
-  --die-width DIE_WIDTH           Exact die width in microns — overrides utilization/aspect-ratio
-  --die-height DIE_HEIGHT         Exact die height in microns — must be used with --die-width
-  --pin-config PIN_CONFIG         Path to a pin order/placement config file (FP_PIN_ORDER_CFG)
-  --pdk PDK                       PDK to use: ihp-sg13g2 or sky130A (default: ihp-sg13g2)
-  --full-timing                   Run all 3 timing corners instead of typical only (slower)
-  --extra-libs [EXTRA_LIBS ...]   Path to one or more extra .lib files to include
-  --extra-lefs [EXTRA_LEFS ...]   Path to one or more extra .lef files to include
+  -m, --module MODULE             Top module name (default: filename stem)
+  -c, --clock-port CLOCK_PORT     Clock port name (default: clk)
+  -p, --clock-period CLOCK_PERIOD Clock period in ns (default: 20 ns = 50 MHz)
+  -u, --utilization UTILIZATION   Core utilization % (default: 30)
+  -a, --aspect-ratio ASPECT_RATIO Aspect ratio H/W (default: 1.0 = square)
+  --die-width DIE_WIDTH           Exact die width in µm — overrides utilization/aspect-ratio
+  --die-height DIE_HEIGHT         Exact die height in µm — must pair with --die-width
+  --pin-config PIN_CONFIG         Pin order/placement config file (FP_PIN_ORDER_CFG)
+  --pdk PDK                       PDK name (default: ihp-sg13g2)
+  --full-timing                   Run all 3 timing corners (typ/fast/slow) — slower
+  --extra-libs [...]              Extra .lib files to include
+  --extra-lefs [...]              Extra .lef files to include
   --output-load OUTPUT_LOAD       Output capacitive load in fF (OUTPUT_CAP_LOAD)
   --max-fanout MAX_FANOUT         Maximum fanout constraint for synthesis
 ```
 
+> `vhdl2gds` has the same options; use `--entity` instead of `--module`.
+
 **Examples:**
 
 ```bash
-# Simple run — defaults to 100 MHz clock, 10% utilization
+# Simple run — 50 MHz clock, 30% utilization
 verilog2gds counter.v
 
-# Compact layout at 50% utilization, 200 MHz clock
+# 200 MHz clock, compact 50% utilization
 verilog2gds my_design.v --utilization 50 --clock-period 5
 
-# Specify a different top module name and clock port
-verilog2gds top.v --module my_top --clock-port sys_clk
-
-# Rectangular chip (1.5× wider than tall)
-verilog2gds my_design.v --aspect-ratio 1.5
-
-# Exact die size: 300 µm × 200 µm (overrides utilization and aspect-ratio)
+# Exact die size
 verilog2gds my_design.v --die-width 300 --die-height 200
 
-# Custom pin placement from a config file
-verilog2gds my_design.v --die-width 500 --die-height 500 --pin-config ./pins.cfg
-
-# Full 3-corner timing analysis for signoff
+# Full 3-corner timing signoff
 verilog2gds my_design.v --utilization 40 --full-timing
 
-# Use sky130A PDK instead
-verilog2gds my_design.v --pdk sky130A
-
-# VHDL Example (uses --entity instead of --module)
+# VHDL
 vhdl2gds spi_master.vhd --entity spi_master --clock-port clk
 ```
 
-**Output:** GDS files are written to `./<module_name>_run/runs/<RUN_DATE>/`
-
-> **Tip:** The default 10% utilization creates a large sparse layout. Use `--utilization 40-50` for compact production layouts. Values above 70% may cause routing failures.
->
-> **Tip:** Use `--die-width` / `--die-height` when you need to match a fixed area budget (e.g. a pad frame or tile). This switches LibreLane to absolute floorplan mode and ignores `--utilization` and `--aspect-ratio`.
+**Output:** GDS files are written to `./<module>_run/runs/<RUN_DATE>/`
 
 ### Example: SPI Master
-
-A complete SPI master (Mode 0/3, configurable clock divider, 8-bit TX/RX) was synthesised and laid out using this flow:
 
 ```bash
 verilog2gds spi_master.v --utilization 40 --clock-period 10
@@ -220,6 +213,6 @@ Results: **227 cells**, Antenna ✅, DRC ✅, LVS ✅, IR drop 0.17%
 
 ## 🙌 Acknowledgments
 
-*   **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus**. ([GitHub](https://github.com/volkermuehlhaus/setupEM))
-*   **plot_inductor.py**: The plotting script provided in this repository was originally authored by **Volker Muehlhaus**.
-*   **Base Docker Image**: The underlying IC design environment is provided by the excellent **IIC-OSIC-TOOLS** project. ([GitHub](https://github.com/iic-jku/iic-osic-tools) | [Docker Hub](https://hub.docker.com/r/hpretl/iic-osic-tools))
+- **SetupEM & gds2palace**: Developed and maintained by **Volker Muehlhaus** ([GitHub](https://github.com/volkermuehlhaus/setupEM))
+- **plot_inductor.py**: Originally authored by **Volker Muehlhaus**
+- **Base Docker Image**: **IIC-OSIC-TOOLS** project ([GitHub](https://github.com/iic-jku/iic-osic-tools) | [Docker Hub](https://hub.docker.com/r/hpretl/iic-osic-tools))

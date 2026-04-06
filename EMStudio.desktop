@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=EMStudio
+Comment=IHP EM Structure Editor (RF/EM design for SG13G2)
+Exec=/opt/emstudio/EMStudio
+Icon=/opt/emstudio/icons/EMStudio.png
+Terminal=false
+Categories=Development;Electronics;
+MimeType=application/x-gds-layout;
+StartupNotify=true
