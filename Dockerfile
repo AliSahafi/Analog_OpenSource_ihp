@@ -199,5 +199,13 @@ COPY xfce4-desktop.xml /headless/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-
 RUN mkdir -p /headless/.config/xfce4/xfconf/xfce-perchannel-xml && \
     chown -R 1000:1000 /headless/.config/background.png \
                        /headless/.config/xfce4/
+
+# ── 15. Xschem configuration ─────────────────────────────────────────────────
+# Automatically allow embedded scripts in schematics without prompting
+RUN mkdir -p /headless/.xschem && \
+    echo 'set xschem_execute_scripts 1' >> /headless/.xschem/xschemrc && \
+    chown -R 1000:1000 /headless/.xschem
+
 USER 1000
+
 
