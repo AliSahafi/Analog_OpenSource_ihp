@@ -1,0 +1,568 @@
+#!/usr/bin/env python3
+# padgen — IHP SG13G2 Pad Ring & Full-Chip GDS Generator
+#
+# Generates a complete LibreLane Chip-flow project (config.yaml + chip_top.sv + chip_core.sv)
+# with automatic pad placement, die sizing, and one-command GDS streaming.
+#
+# Usage:
+#   padgen pads.yaml               # generate project scaffold in ./<design_name>_chip/
+#   padgen pads.yaml --build       # generate AND synthesize to GDS
+#   padgen pads.yaml -o ./mychip   # specify custom output directory
+#   padgen --example               # print an annotated example pad list file
+
+import argparse
+import sys
+import json
+import os
+import subprocess
+import math
+from pathlib import Path
+
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
+
+# ─── Pad cell catalogue ──────────────────────────────────────────────────────
+PAD_TYPES = {
+    "input":    {"cell": "sg13g2_IOPadIn",           "drives": None,       "direction": "input"},
+    "output":   {"cell": "sg13g2_IOPadOut{d}mA",     "drives": [4, 16, 30],"direction": "output"},
+    "tristate": {"cell": "sg13g2_IOPadTriOut{d}mA",  "drives": [4, 16, 30],"direction": "output"},
+    "bidir":    {"cell": "sg13g2_IOPadInOut{d}mA",   "drives": [4, 16, 30],"direction": "inout"},
+    "analog":   {"cell": "sg13g2_IOPadAnalog",        "drives": None,       "direction": "inout"},
+    "iovdd":    {"cell": "sg13g2_IOPadIOVdd",         "drives": None,       "direction": "supply"},
+    "iovss":    {"cell": "sg13g2_IOPadIOVss",         "drives": None,       "direction": "supply"},
+    "vdd":      {"cell": "sg13g2_IOPadVdd",           "drives": None,       "direction": "supply"},
+    "vss":      {"cell": "sg13g2_IOPadVss",           "drives": None,       "direction": "supply"},
+}
+
+VALID_EDGES = ["south", "east", "north", "west"]
+
+EXAMPLE_YAML = """\
+# padgen pad list specification — IHP SG13G2 LibreLane Chip Flow
+# Run:  padgen this_file.yaml --build
+#
+# ── Design Identity ──────────────────────────────────────────────────────────
+design_name: spi_top           # Top-level module name (also DESIGN_NAME in LibreLane)
+core_module: spi_master        # Name of the core logic module inside top
+
+# ── Clock & Timing ───────────────────────────────────────────────────────────
+clock_port:   clk              # Clock signal name (matches a pad signal name below)
+clock_period: 20.0             # Clock period in nanoseconds (20 ns = 50 MHz)
+
+# ── Floorplan & Die Dimensions (in microns) ──────────────────────────────────
+# If omitted or null, padgen automatically calculates the optimal die size.
+die_width:  1600               # Total die width in um
+die_height: 1600               # Total die height in um
+
+# ── LibreLane Flow Options ────────────────────────────────────────────────────
+flow:                    Chip    # Chip (full-chip flow with padring)
+primary_gdsii_tool:      klayout # klayout (fast & compact) or magic
+disable_illegal_overlap: true    # Ignore Magic overlap checks
+disable_klayout_drc:     false   # Set true to skip KLayout DRC
+disable_magic_drc:       false   # Set true to skip Magic DRC
+
+# ── Pad Placement per Edge ────────────────────────────────────────────────────
+# Pads are placed in order:
+#   South / North: Left -> Right
+#   East / West  : Bottom -> Top
+
+pads:
+  south:
+    - {name: clk_pad,   type: input,  signal: clk}
+    - {name: rst_n_pad, type: input,  signal: rst_n}
+    - {name: start_pad, type: input,  signal: start}
+    - {name: vdd_pad_s, type: vdd}
+    - {name: vss_pad_s, type: vss}
+
+  east:
+    - {name: tx_data_pad, type: input, signal: tx_data, width: 8}
+    - {name: iovdd_pad_e, type: iovdd}
+    - {name: iovss_pad_e, type: iovss}
+
+  north:
+    - {name: rx_data_pad, type: output, drive: 16, signal: rx_data, width: 8}
+    - {name: busy_pad,    type: output, drive: 4,  signal: busy}
+    - {name: done_pad,    type: output, drive: 4,  signal: done}
+
+  west:
+    - {name: sclk_pad, type: output, drive: 16, signal: sclk}
+    - {name: mosi_pad, type: output, drive: 16, signal: mosi}
+    - {name: miso_pad, type: input,             signal: miso}
+    - {name: cs_n_pad, type: output, drive: 16, signal: cs_n}
+"""
+
+def resolve_cell(pad_type, drive):
+    info = PAD_TYPES.get(pad_type)
+    if info is None:
+        print(f"[ERROR] Unknown pad type: '{pad_type}'")
+        print(f"        Valid types: {', '.join(PAD_TYPES)}")
+        sys.exit(1)
+    cell = info["cell"]
+    if "{d}" in cell:
+        valid_drives = info["drives"]
+        if drive not in valid_drives:
+            print(f"[ERROR] Drive strength {drive} mA not valid for '{pad_type}'.")
+            print(f"        Valid values: {valid_drives}")
+            sys.exit(1)
+        cell = cell.format(d=drive)
+    return cell
+
+
+def expand_pad_name_librelane(name, idx):
+    return f"{name}s\\\\[{idx}\\\\].{name}"
+
+
+def load_pad_spec(path):
+    text = path.read_text()
+    if HAS_YAML:
+        return yaml.safe_load(text)
+    else:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            print("[ERROR] PyYAML is not installed and the file is not valid JSON.")
+            sys.exit(1)
+
+
+def solve_valid_die_dimension(initial_dim, pad_counts):
+    # IHP SG13G2: Pad width = 80um, Corner site = 180um, Edge spacing = 140um
+    # Overhead = 2 * (140 + 180) = 640um
+    # OpenROAD pad_cfg requires integer spacing_side
+    dim = int(initial_dim)
+    while True:
+        valid = True
+        for count in pad_counts:
+            if count == 0:
+                continue
+            sum_w = count * 80
+            side_w = dim - 640
+            if side_w <= sum_w:
+                valid = False
+                break
+            space_fill = side_w - sum_w
+            space_between = space_fill / (count + 1)
+            space_between_mult = math.floor(space_between / 1.0)
+            space_side = (space_fill - space_between_mult * (count - 1)) / 2.0
+            if space_side != math.floor(space_side) or space_side < 0:
+                valid = False
+                break
+        if valid:
+            return dim
+        dim += 1
+
+
+def generate_config_yaml(spec, die_w=None, die_h=None):
+    design_name = spec.get("design_name", "chip_top")
+    core_module  = spec.get("core_module",  "chip_core")
+    flow         = spec.get("flow", "Chip")
+    gds_tool     = spec.get("primary_gdsii_tool", "klayout")
+    pdk          = spec.get("pdk", "ihp-sg13g2")
+
+    pads_spec = spec.get("pads", {})
+    count_south = sum(p.get("width", 1) for p in pads_spec.get("south", []))
+    count_north = sum(p.get("width", 1) for p in pads_spec.get("north", []))
+    count_east  = sum(p.get("width", 1) for p in pads_spec.get("east", []))
+    count_west  = sum(p.get("width", 1) for p in pads_spec.get("west", []))
+
+    req_w = die_w or spec.get("die_width") or max(1600, max(count_south, count_north) * 100 + 640)
+    req_h = die_h or spec.get("die_height") or max(1600, max(count_east, count_west) * 100 + 640)
+
+    final_w = solve_valid_die_dimension(req_w, [count_south, count_north])
+    final_h = solve_valid_die_dimension(req_h, [count_east, count_west])
+
+    subst = {
+        "Checker.IllegalOverlap": None,
+        "Checker.LintErrors": None,
+        "Verilator.Lint": None,
+        "KLayout.Filler": None,
+    }
+    if spec.get("disable_klayout_drc", False):
+        subst["KLayout.DRC"] = None
+        subst["Checker.KLayoutDRC"] = None
+    if spec.get("disable_magic_drc", False):
+        subst["Magic.DRC"] = None
+        subst["Checker.MagicDRC"] = None
+    if spec.get("disable_klayout_density", False):
+        subst["KLayout.Density"] = None
+        subst["Checker.KLayoutDensity"] = None
+    if spec.get("disable_ir_drop", False):
+        subst["OpenROAD.IRDropReport"] = None
+    if spec.get("disable_xor", False):
+        subst["KLayout.XOR"] = None
+    if spec.get("disable_lvs", False):
+        subst["Netgen.LVS"] = None
+        subst["Checker.LVS"] = None
+
+    lines = [
+        "meta:",
+        "  version: 3",
+        f"  flow: {flow}",
+        "  substituting_steps:"
+    ]
+    for k, v in subst.items():
+        lines.append(f"    {k}: null" if v is None else f"    {k}: {v}")
+
+    lines.append("")
+    lines.append(f"PDK: {pdk}")
+    lines.append(f"DESIGN_NAME: {design_name}")
+    lines.append("VERILOG_FILES:")
+    lines.append(f"- dir::../src/{design_name}.sv")
+    lines.append(f"- dir::../src/{core_module}.sv")
+    lines.append("- /foss/pdks/ihp-sg13g2/libs.ref/sg13g2_io/verilog/sg13g2_io.v")
+    for f in spec.get("extra_verilog_files", []):
+        lines.append(f"- dir::{f}")
+
+    lines.append("")
+    defines = spec.get("verilog_defines", ["FUNCTIONAL"])
+    lines.append(f"VERILOG_DEFINES: {json.dumps(defines)}")
+    lines.append("")
+    lines.append(f"PRIMARY_GDSII_STREAMOUT_TOOL: {gds_tool}")
+    lines.append("")
+    lines.append("VDD_NETS: [\"VDD\"]")
+    lines.append("GND_NETS: [\"VSS\"]")
+    lines.append("")
+    lines.append("FP_SIZING: absolute")
+    lines.append(f"DIE_AREA: [0, 0, {final_w}, {final_h}]")
+    lines.append(f"CORE_AREA: [330, 330, {final_w - 330}, {final_h - 330}]")
+    lines.append("")
+
+    if spec.get("clock_port"):
+        clk_name = spec["clock_port"]
+        if not clk_name.endswith("_PAD"):
+            clk_name = f"{clk_name}_PAD"
+        lines.append(f"CLOCK_PORT: {clk_name}")
+    if spec.get("clock_period"):
+        lines.append(f"CLOCK_PERIOD: {spec['clock_period']}")
+    lines.append("")
+
+    for edge in VALID_EDGES:
+        edge_pads = pads_spec.get(edge, [])
+        if not edge_pads:
+            continue
+        lines.append(f"PAD_{edge.upper()}:")
+        for pad in edge_pads:
+            name  = pad["name"]
+            width = pad.get("width", 1)
+            if width == 1:
+                lines.append(f"  - {name}")
+            else:
+                for i in range(width):
+                    escaped = expand_pad_name_librelane(name, i)
+                    lines.append(f'  - "{escaped}"')
+        lines.append("")
+
+    return "\n".join(lines), final_w, final_h
+
+
+def generate_chip_top_sv(spec):
+    design_name = spec.get("design_name", "chip_top")
+    core_module  = spec.get("core_module",  "chip_core")
+    pads_spec    = spec.get("pads", {})
+
+    all_pads = []
+    for edge in VALID_EDGES:
+        all_pads.extend(pads_spec.get(edge, []))
+
+    lines = [
+        "// SPDX-FileCopyrightText: Auto-generated by padgen",
+        "// SPDX-License-Identifier: Apache-2.0",
+        "`default_nettype none",
+        "",
+        f"module {design_name} (",
+        "`ifdef USE_POWER_PINS",
+        "    inout wire IOVDD,",
+        "    inout wire IOVSS,",
+        "    inout wire VDD,",
+        "    inout wire VSS,",
+        "`endif",
+    ]
+
+    port_lines = []
+    for pad in all_pads:
+        info      = PAD_TYPES.get(pad["type"], {})
+        direction = info.get("direction", "inout")
+        if direction == "supply":
+            continue
+        signal = pad.get("signal", pad["name"])
+        width  = pad.get("width", 1)
+        if direction == "input":
+            sv_dir = "input  wire"
+        elif direction == "output":
+            sv_dir = "output wire"
+        else:
+            sv_dir = "inout  wire"
+        w_str = f"[{width-1}:0] " if width > 1 else ""
+        port_lines.append(f"    {sv_dir} {w_str}{signal}_PAD")
+
+    for i, pl in enumerate(port_lines):
+        comma = "" if i == len(port_lines) - 1 else ","
+        lines.append(pl + comma)
+    lines += [");", ""]
+
+    lines.append("    // ── Internal PAD<->CORE wires ──────────────────────────────────────")
+    for pad in all_pads:
+        info      = PAD_TYPES.get(pad["type"], {})
+        direction = info.get("direction", "inout")
+        if direction == "supply":
+            continue
+        signal   = pad.get("signal", pad["name"])
+        width    = pad.get("width", 1)
+        w_str    = f"[{width-1}:0] " if width > 1 else ""
+        pad_type = pad["type"]
+        if pad_type in ("input", "bidir"):
+            lines.append(f"    wire {w_str}{signal}_PAD2CORE;")
+        if pad_type in ("output", "tristate", "bidir"):
+            lines.append(f"    wire {w_str}{signal}_CORE2PAD;")
+        if pad_type in ("tristate", "bidir"):
+            lines.append(f"    wire {w_str}{signal}_oe;  // output-enable")
+    lines.append("")
+
+    lines.append("    // ── IO pad instantiations ─────────────────────────────────────────")
+    for edge in VALID_EDGES:
+        edge_pads = pads_spec.get(edge, [])
+        if not edge_pads:
+            continue
+        lines.append(f"    // {edge.upper()} edge")
+        for pad in edge_pads:
+            name     = pad["name"]
+            pad_type = pad["type"]
+            drive    = pad.get("drive", 16)
+            signal   = pad.get("signal", name)
+            width    = pad.get("width", 1)
+            info     = PAD_TYPES.get(pad_type, {})
+            direction = info.get("direction", "inout")
+            cell     = resolve_cell(pad_type, drive)
+
+            if direction == "supply":
+                if width == 1:
+                    lines += [f"    (* keep *) {cell} {name} (", "    );", ""]
+                else:
+                    lines += [
+                        f"    genvar {name}_i;",
+                        f"    generate for ({name}_i = 0; {name}_i < {width}; {name}_i++) begin : {name}s",
+                        f"        (* keep *) {cell} {name} (", "        );",
+                        "    end endgenerate", ""
+                    ]
+                continue
+
+            if width == 1:
+                if pad_type == "input":
+                    pm = f".pad({signal}_PAD), .p2c({signal}_PAD2CORE)"
+                elif pad_type == "output":
+                    pm = f".pad({signal}_PAD), .c2p({signal}_CORE2PAD)"
+                elif pad_type == "tristate":
+                    pm = f".pad({signal}_PAD), .c2p({signal}_CORE2PAD), .c2p_en({signal}_oe)"
+                elif pad_type == "bidir":
+                    pm = f".pad({signal}_PAD), .p2c({signal}_PAD2CORE), .c2p({signal}_CORE2PAD), .c2p_en({signal}_oe)"
+                else:  # analog
+                    pm = f".pad({signal}_PAD)"
+                lines += [f"    (* keep *) {cell} {name} (", f"        {pm}", "    );", ""]
+            else:
+                lines += [
+                    f"    genvar {name}_i;",
+                    f"    generate for ({name}_i = 0; {name}_i < {width}; {name}_i++) begin : {name}s",
+                    f"        (* keep *) {cell} {name} (",
+                ]
+                if pad_type == "input":
+                    lines.append(f"            .pad({signal}_PAD[{name}_i]),")
+                    lines.append(f"            .p2c({signal}_PAD2CORE[{name}_i])")
+                elif pad_type == "output":
+                    lines.append(f"            .pad({signal}_PAD[{name}_i]),")
+                    lines.append(f"            .c2p({signal}_CORE2PAD[{name}_i])")
+                elif pad_type == "tristate":
+                    lines.append(f"            .pad({signal}_PAD[{name}_i]),")
+                    lines.append(f"            .c2p({signal}_CORE2PAD[{name}_i]),")
+                    lines.append(f"            .c2p_en({signal}_oe[{name}_i])")
+                elif pad_type == "bidir":
+                    lines.append(f"            .pad({signal}_PAD[{name}_i]),")
+                    lines.append(f"            .p2c({signal}_PAD2CORE[{name}_i]),")
+                    lines.append(f"            .c2p({signal}_CORE2PAD[{name}_i]),")
+                    lines.append(f"            .c2p_en({signal}_oe[{name}_i])")
+                else:
+                    lines.append(f"            .pad({signal}_PAD[{name}_i])")
+                lines += ["        );", "    end endgenerate", ""]
+
+    lines += [
+        "    // ── Core logic ────────────────────────────────────────────────────────",
+        f"    {core_module} core (",
+    ]
+    core_ports = []
+    for pad in all_pads:
+        info      = PAD_TYPES.get(pad["type"], {})
+        direction = info.get("direction", "inout")
+        if direction == "supply":
+            continue
+        pad_type = pad["type"]
+        signal   = pad.get("signal", pad["name"])
+        if pad_type == "input":
+            core_ports.append(f"        .{signal}({signal}_PAD2CORE)")
+        elif pad_type == "output":
+            core_ports.append(f"        .{signal}({signal}_CORE2PAD)")
+        elif pad_type in ("tristate", "bidir"):
+            core_ports.append(f"        .{signal}_in({signal}_PAD2CORE)")
+            core_ports.append(f"        .{signal}_out({signal}_CORE2PAD)")
+            core_ports.append(f"        .{signal}_oe({signal}_oe)")
+        elif pad_type == "analog":
+            core_ports.append(f"        .{signal}({signal}_PAD)")
+
+    for i, cp in enumerate(core_ports):
+        comma = "" if i == len(core_ports) - 1 else ","
+        lines.append(cp + comma)
+    lines += ["    );", "", "endmodule"]
+
+    return "\n".join(lines)
+
+
+def generate_chip_core_sv(spec):
+    core_module = spec.get("core_module", "chip_core")
+    pads_spec   = spec.get("pads", {})
+
+    all_pads = []
+    for edge in VALID_EDGES:
+        all_pads.extend(pads_spec.get(edge, []))
+
+    lines = [
+        "// SPDX-FileCopyrightText: Auto-generated by padgen",
+        "// SPDX-License-Identifier: Apache-2.0",
+        "`default_nettype none",
+        "",
+        f"module {core_module} (",
+    ]
+
+    port_decls = []
+    for pad in all_pads:
+        info      = PAD_TYPES.get(pad["type"], {})
+        direction = info.get("direction", "inout")
+        if direction == "supply":
+            continue
+        pad_type = pad["type"]
+        signal   = pad.get("signal", pad["name"])
+        width    = pad.get("width", 1)
+        w_str    = f"[{width-1}:0] " if width > 1 else ""
+
+        if pad_type == "input":
+            port_decls.append(f"    input  wire {w_str}{signal}")
+        elif pad_type == "output":
+            port_decls.append(f"    output wire {w_str}{signal}")
+        elif pad_type in ("tristate", "bidir"):
+            port_decls.append(f"    input  wire {w_str}{signal}_in")
+            port_decls.append(f"    output wire {w_str}{signal}_out")
+            port_decls.append(f"    output wire {w_str}{signal}_oe")
+        elif pad_type == "analog":
+            port_decls.append(f"    inout  wire {w_str}{signal}")
+
+    for i, pd in enumerate(port_decls):
+        comma = "" if i == len(port_decls) - 1 else ","
+        lines.append(pd + comma)
+
+    lines += [");", "", "    // TODO: Insert your core design logic here", "", "endmodule"]
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="IHP SG13G2 Pad Ring & Full-Chip GDS Generator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  padgen pads.yaml                     # generate project scaffold in ./<design_name>_chip/
+  padgen pads.yaml --build             # generate project AND synthesize to GDS
+  padgen pads.yaml --die-width 1600    # override die width to 1600 um
+  padgen --example > pads.yaml         # output an annotated template
+        """
+    )
+    parser.add_argument("pad_file", nargs="?",
+                        help="Path to the pad list YAML (or JSON) file. See --example.")
+    parser.add_argument("-o", "--output-dir",
+                        help="Output project directory (default: ./<design_name>_chip/)")
+    parser.add_argument("--die-width", type=float, default=None,
+                        help="Override total die width in um")
+    parser.add_argument("--die-height", type=float, default=None,
+                        help="Override total die height in um")
+    parser.add_argument("--build", "--run", dest="build", action="store_true",
+                        help="Immediately execute LibreLane Chip flow to generate GDS")
+    parser.add_argument("--example", action="store_true",
+                        help="Print an annotated example pad list file and exit.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print generated files to stdout instead of writing.")
+    parser.add_argument("--no-core-stub", action="store_true",
+                        help="Skip generating chip_core.sv stub.")
+
+    args = parser.parse_args()
+
+    if args.example:
+        print(EXAMPLE_YAML)
+        sys.exit(0)
+
+    if not args.pad_file:
+        parser.print_help()
+        sys.exit(1)
+
+    pad_path = Path(args.pad_file).resolve()
+    if not pad_path.exists():
+        print(f"[ERROR] Pad file not found: {pad_path}")
+        sys.exit(1)
+
+    spec        = load_pad_spec(pad_path)
+    design_name = spec.get("design_name", "chip_top")
+    core_module = spec.get("core_module",  "chip_core")
+
+    out_dir       = Path(args.output_dir).resolve() if args.output_dir else pad_path.parent / f"{design_name}_chip"
+    src_dir       = out_dir / "src"
+    librelane_dir = out_dir / "librelane"
+
+    config_yaml, final_w, final_h = generate_config_yaml(spec, args.die_width, args.die_height)
+    chip_top_sv  = generate_chip_top_sv(spec)
+    chip_core_sv = generate_chip_core_sv(spec)
+
+    if args.dry_run:
+        print("=" * 70)
+        print("=== librelane/config.yaml ===")
+        print("=" * 70)
+        print(config_yaml)
+        print()
+        print("=" * 70)
+        print(f"=== src/{design_name}.sv ===")
+        print("=" * 70)
+        print(chip_top_sv)
+        sys.exit(0)
+
+    os.makedirs(src_dir, exist_ok=True)
+    os.makedirs(librelane_dir, exist_ok=True)
+
+    config_path  = librelane_dir / "config.yaml"
+    top_sv_path  = src_dir / f"{design_name}.sv"
+    core_sv_path = src_dir / f"{core_module}.sv"
+
+    config_path.write_text(config_yaml)
+    top_sv_path.write_text(chip_top_sv)
+    if not args.no_core_stub and not core_sv_path.exists():
+        core_sv_path.write_text(chip_core_sv)
+
+    print(f"[+] Pad ring project generated in: {out_dir}/")
+    print(f"    librelane/config.yaml    — LibreLane Chip-flow config (Die: {final_w}x{final_h} µm)")
+    print(f"    src/{design_name}.sv     — Pad ring top module")
+    if not args.no_core_stub:
+        print(f"    src/{core_module}.sv   — Core logic stub")
+    print()
+
+    if args.build:
+        print(f"[*] Launching LibreLane full-chip flow (streaming to GDS)...")
+        env = os.environ.copy()
+        env.pop("STD_CELL_LIBRARY", None)
+        env.pop("PDK", None)
+        try:
+            subprocess.run(
+                f"cd {librelane_dir} && rm -rf runs && librelane config.yaml",
+                shell=True, check=True, env=env
+            )
+            print(f"\n[+] Success! Full-chip GDS generated in:\n    {librelane_dir}/runs/")
+        except subprocess.CalledProcessError as e:
+            print(f"\n[-] Error: LibreLane execution failed (exit code {e.returncode}).")
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

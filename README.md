@@ -16,11 +16,11 @@ This repo extends the base image with:
 |----------|---------|
 | **EMStudio** (compiled from source) | IHP's Qt5-based EM structure editor — supports openEMS and Palace |
 | **setupEM + gds2palace** | Guided GUI for Palace EM simulations; GDS-to-Palace geometry converter |
-| **gmsh 4.15.0** (arm64 source build) | 3D mesh generator with OpenCASCADE; pre-installed by base on x86_64 |
-| **plot_inductor.py** | S-parameter post-processing and inductor characterisation |
+| **padgen** | IHP SG13G2 pad ring & full-chip project scaffold generator (LibreLane Chip flow) |
 | **verilog2gds** | One-command Verilog → GDS via LibreLane + IHP SG13G2 |
 | **vhdl2gds** | One-command VHDL → GDS via LibreLane + IHP SG13G2 |
-| **IHP PDK patches** | Corner name fixes, PDN variables, and Tcl script patches for LibreLane 2.x |
+| **plot_inductor.py** | S-parameter post-processing and inductor characterisation |
+| **IHP PDK patches** | Corner name fixes, PDN variables, and Tcl script patches for LibreLane 3.x |
 | **Shell aliases** | `emstudio`, `inductor`, `pdk-ihp` shortcuts in every terminal |
 | **XFCE desktop shortcut** | EMStudio launcher in the Applications menu |
 
@@ -208,6 +208,68 @@ Results: **227 cells**, Antenna ✅, DRC ✅, LVS ✅, IR drop 0.17%
 <p align="center">
   <img src="./spi.png" alt="SPI Master GDS Layout" width="600"/>
 </p>
+
+---
+
+## 🏛️ Pad Ring & Full-Chip Flow — `padgen` (IHP SG13G2)
+
+`padgen` is a CLI tool available inside the container and on the host that automates the complete full-chip pad ring flow for the IHP SG13G2 PDK. From a simple YAML pad list, it:
+
+1. **Calculates Optimal Die & Core Sizing:** Automatically determines `DIE_AREA` and `CORE_AREA` aligned to integer filler boundaries.
+2. **Generates `src/<design>.sv`:** SystemVerilog top-level wrapper with instantiated IHP SG13G2 IO pads (`sg13g2_IOPad*`), bus generate loops, internal wiring, and core mapping.
+3. **Generates `src/<core>.sv`:** Core logic module stub.
+4. **Generates `librelane/config.yaml`:** LibreLane 3.x Chip-flow configuration with `PAD_SOUTH`, `PAD_EAST`, `PAD_NORTH`, `PAD_WEST`, power nets (`VDD`, `VSS`), and signoff controls.
+5. **Streams directly to GDS (optional):** With `--build`, executes LibreLane end-to-end to produce the final chip GDS.
+
+### Supported IHP SG13G2 IO Pad Cells
+
+| Type | Cell Master | Drive Strengths | Direction |
+|---|---|---|---|
+| `input` | `sg13g2_IOPadIn` | — | Digital In |
+| `output` | `sg13g2_IOPadOut{4,16,30}mA` | 4, 16, 30 mA | Digital Out |
+| `tristate` | `sg13g2_IOPadTriOut{4,16,30}mA` | 4, 16, 30 mA | Tri-state Out |
+| `bidir` | `sg13g2_IOPadInOut{4,16,30}mA` | 4, 16, 30 mA | Bidirectional |
+| `analog` | `sg13g2_IOPadAnalog` | — | Analog Pass-through |
+| `iovdd` / `iovss` | `sg13g2_IOPadIOVdd` / `sg13g2_IOPadIOVss` | — | 3.3V IO Supply |
+| `vdd` / `vss` | `sg13g2_IOPadVdd` / `sg13g2_IOPadVss` | — | 1.2V Core Supply |
+
+### Usage & Examples
+
+```bash
+# 1. Generate an annotated template pad list
+padgen --example > my_chip.yaml
+
+# 2. Preview generated config and Verilog top without writing
+padgen my_chip.yaml --dry-run
+
+# 3. Generate project scaffold in ./my_chip/
+padgen my_chip.yaml -o ./my_chip
+
+# 4. Generate project AND immediately synthesize to full-chip GDS
+padgen my_chip.yaml -o ./my_chip --build
+
+# 5. Override die dimensions (in microns)
+padgen my_chip.yaml --die-width 1600 --die-height 1600 --build
+```
+
+---
+
+## 🖥️ Graphical & Remote Desktop Access
+
+| Access Method | Connection URL / Address | Credentials | Best For |
+|---|---|---|---|
+| **Web Browser (noVNC)** | `http://localhost:8080/vnc.html` | Password: `abc123` | Instant browser access, zero installation |
+| **TigerVNC Viewer** | `localhost:5902` | Password: `abc123` | High-speed layout viewing & EDA tools |
+| **Remmina (Linux)** | `localhost:5902` (Protocol: VNC) | Password: `abc123` | Desktop GUI connection management |
+| **CLI / Host Terminal** | `docker exec -it ihp-osic bash` | — | Headless scripting & automated runs |
+
+---
+
+## 📁 File Sharing Between Host and Container
+
+The `./designs` folder on your host is bind-mounted directly to `/foss/designs` inside the container:
+- Files created or edited in `./designs` on your PC appear immediately at `/foss/designs` in the container.
+- All GDS layouts, reports, and build artifacts saved in `/foss/designs` persist on your host machine.
 
 ---
 

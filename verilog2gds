@@ -74,17 +74,17 @@ def main():
             print(f"Error: pin config file '{pin_cfg_path}' not found.")
             sys.exit(1)
         subprocess.run(["cp", str(pin_cfg_path), str(run_dir / "src/")], check=True)
-        config["FP_PIN_ORDER_CFG"] = f"dir::src/{pin_cfg_path.name}"
+        config["IO_PIN_ORDER_CFG"] = f"dir::src/{pin_cfg_path.name}"
 
     # PDK specific settings
     if args.pdk == "ihp-sg13g2":
         config["STA_CORNERS"] = ["nom_typ_1p20V_25C"]
         config["DEFAULT_CORNER"] = "nom_typ_1p20V_25C"
-        config["LIB"] = {
+        config["CELL_LIBS"] = {
             "nom_typ_1p20V_25C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib"]
         }
         if args.extra_libs:
-            config["LIB"]["nom_typ_1p20V_25C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+            config["CELL_LIBS"]["nom_typ_1p20V_25C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
 
         config["TECH_LEFS"] = {
             "nom_typ_1p20V_25C": "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
@@ -98,13 +98,13 @@ def main():
 
         if args.full_timing:
             config["STA_CORNERS"].extend(["nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"])
-            config["LIB"].update({
+            config["CELL_LIBS"].update({
                 "nom_fast_1p32V_m40C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib"],
                 "nom_slow_1p08V_125C": ["/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib"]
             })
             if args.extra_libs:
-                config["LIB"]["nom_fast_1p32V_m40C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
-                config["LIB"]["nom_slow_1p08V_125C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+                config["CELL_LIBS"]["nom_fast_1p32V_m40C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
+                config["CELL_LIBS"]["nom_slow_1p08V_125C"].extend([str(Path(l).resolve()) for l in args.extra_libs])
             
             for c in ["nom_fast_1p32V_m40C", "nom_slow_1p08V_125C"]:
                 config["TECH_LEFS"][c] = "/foss/pdks/ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef"
