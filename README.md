@@ -8,7 +8,7 @@ This repository provides an enhanced Dockerfile and post-processing scripts for 
 
 ## Overview
 
-Built on top of [IIC-OSIC-TOOLS](https://github.com/iic-jku/iic-osic-tools) (`hpretl/iic-osic-tools:latest`), which already bundles 100+ analog/digital EDA tools (KLayout, OpenROAD, Yosys, Magic, Netgen, LibreLane, and more).
+Built on top of [IIC-OSIC-TOOLS](https://github.com/iic-jku/iic-osic-tools) (`hpretl/iic-osic-tools:2026.07`), which already bundles 100+ analog/digital EDA tools (KLayout, OpenROAD, Yosys, Magic, Netgen, LibreLane, and more).
 
 This repo extends the base image with:
 

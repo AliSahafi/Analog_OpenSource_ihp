@@ -1,11 +1,11 @@
-FROM hpretl/iic-osic-tools:latest
+# Pinned to tested, stable release 2026.07 (Ubuntu 24.04, Python 3.12, LibreLane 3.x)
+FROM hpretl/iic-osic-tools:2026.07@sha256:5d6adf1f437cd0f2f8f8614488ec3c247ba8c768f4663a25d5e997b30ccb13b0
 
 # ============================================================================
 #  IHP SG13G2 Extended Toolset
 #  Adds EMStudio, RF/EM scripts, LibreLane PDK patches, and Verilog/VHDL→GDS
 #  wrappers on top of the upstream iic-osic-tools image.
-#  Compatible with: hpretl/iic-osic-tools:latest (Ubuntu 24.04, Python 3.12,
-#                   LibreLane 3.x, gds2palace 0.3.x, setupEM 0.1.x)
+#  Pinned upstream version: hpretl/iic-osic-tools:2026.07
 # ============================================================================
 
 USER root
