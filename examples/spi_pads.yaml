@@ -1,0 +1,33 @@
+# Padring configuration for SPI Master on IHP SG13G2
+design_name: spi_top
+core_module: spi_master
+clock_port: clk
+clock_period: 20.0
+
+flow: Chip
+primary_gdsii_tool: klayout
+disable_illegal_overlap: true
+
+pads:
+  south:
+    - {name: clk_pad,   type: input,  signal: clk}
+    - {name: rst_n_pad, type: input,  signal: rst_n}
+    - {name: start_pad, type: input,  signal: start}
+    - {name: vdd_pad_s, type: vdd}
+    - {name: vss_pad_s, type: vss}
+
+  east:
+    - {name: tx_data_pad, type: input, signal: tx_data, width: 8}
+    - {name: iovdd_pad_e, type: iovdd}
+    - {name: iovss_pad_e, type: iovss}
+
+  north:
+    - {name: rx_data_pad, type: output, drive: 16, signal: rx_data, width: 8}
+    - {name: busy_pad,    type: output, drive: 4,  signal: busy}
+    - {name: done_pad,    type: output, drive: 4,  signal: done}
+
+  west:
+    - {name: sclk_pad, type: output, drive: 16, signal: sclk}
+    - {name: mosi_pad, type: output, drive: 16, signal: mosi}
+    - {name: miso_pad, type: input,             signal: miso}
+    - {name: cs_n_pad, type: output, drive: 16, signal: cs_n}

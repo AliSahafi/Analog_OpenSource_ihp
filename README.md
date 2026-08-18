@@ -42,8 +42,8 @@ cd Analog_OpenSource_ihp
 # (Optional) copy and edit the configuration file
 cp .env.example .env
 
-# Create the local designs folder
-mkdir -p designs
+# Create local designs folder and populate with starter examples
+mkdir -p designs && cp -r examples/* designs/
 
 # Build the image and start the container
 docker compose up -d --build
